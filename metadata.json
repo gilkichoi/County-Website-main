@@ -1,0 +1,8 @@
+{
+  "name": "Taita Taveta County Government",
+  "description": "Official portal for the County Government of Taita Taveta, featuring tourist sites, budget documents, vacancies, and public services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
