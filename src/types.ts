@@ -33,6 +33,30 @@ export interface Official {
   departmentId?: string;
   type: 'Governor' | 'Deputy Governor' | 'CECM' | 'CCO';
   imagePlaceholder: string;
+  profile?: string;
+}
+
+export interface HeroActionButton {
+  id: string;
+  label: string;
+  url: string;
+  color: 'green' | 'orange' | 'gold' | 'dark' | 'white';
+}
+
+export interface HeroContent {
+  welcomeTag: string;
+  title: string;
+  titleColor?: 'text-white' | 'text-orange-400' | 'text-amber-300' | 'text-green-400';
+  subtitle: string;
+  slides: string[];
+  actionButtons?: HeroActionButton[];
+}
+
+export interface CountyBranding {
+  logoUrl?: string;
+  countyName: string;
+  countyTagline: string;
+  motto?: string;
 }
 
 export interface TouristSite {
@@ -56,8 +80,18 @@ export interface Vacancy {
   id: string;
   title: string;
   departmentId: string;
+  departmentIds?: string[];
   deadline: string;
-  type: 'Full-time' | 'Contract' | 'Internship';
+  type: 'Full-time' | 'Contract' | 'Internship' | 'Part-time' | 'Temporary';
+  referenceNo?: string;
+  description?: string;
+  requirements?: string[];
+  positionsCount?: number;
+  fileData?: string;
+  fileSize?: string;
+  viewsCount?: number;
+  downloadsCount?: number;
+  datePosted?: string;
 }
 
 export interface GovernorMessage {

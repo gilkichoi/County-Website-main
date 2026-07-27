@@ -10,15 +10,15 @@ import { useLanguage } from '../context/LanguageContext';
 import { FacebookFeed } from '../components/FacebookFeed';
 import { NewsItem, EventItem } from '../types';
 
-const heroImages = [
-  "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1600&q=80", // Beautiful nature/landscape
-  "https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=1600&q=80", // Lake Jipe style landscape
-  "https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1600&q=80", // Wildlife/Sanctuary
-];
-
 export function Home() {
-  const { newsItems, eventItems, documents, departments, touristSites, governorMessage } = useData();
+  const { newsItems, eventItems, documents, departments, touristSites, governorMessage, heroContent } = useData();
   const { t } = useLanguage();
+
+  const activeSlides = heroContent?.slides?.length > 0 ? heroContent.slides : [
+    "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1600&q=80",
+    "https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=1600&q=80",
+    "https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1600&q=80",
+  ];
 
   const [activeTab, setActiveTab] = useState<'all' | 'news' | 'notices' | 'events'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,60 +56,92 @@ export function Home() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
+    if (activeSlides.length <= 1) return;
     const timer = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % heroImages.length);
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % activeSlides.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeSlides.length]);
 
   return (
     <div>
       {/* Hero Section with Slideshow */}
-      <section className="relative bg-gray-900 text-white min-h-[85vh] flex items-center">
-        <div className="absolute inset-0 bg-gray-900 overflow-hidden">
-          <AnimatePresence>
-            <motion.img
-              key={currentImageIndex}
-              src={heroImages[currentImageIndex]}
-              alt="Taita Taveta Landscape"
-              initial={{ opacity: 0, scale: 1.05 }}
-              animate={{ opacity: 0.7, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.5, ease: "easeInOut" }}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          </AnimatePresence>
-          <div className="absolute inset-0 bg-gradient-to-r from-gray-900/90 via-gray-900/60 to-transparent pointer-events-none"></div>
-        </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32 w-full">
-          <div className="max-w-3xl z-10 relative">
-            <span className="inline-block py-1 px-3 rounded-full bg-green-600/30 text-green-300 text-sm font-semibold tracking-wider uppercase mb-6 border border-green-500/30 shadow-sm">
-              Welcome to Taita Taveta
+      <section className="bg-gray-900 py-6 sm:py-8 lg:py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto relative rounded-3xl overflow-hidden shadow-2xl border border-gray-800 bg-gray-950 min-h-[500px] sm:min-h-[560px] flex items-center">
+          {/* Slide Background Images */}
+          <div className="absolute inset-0 bg-gray-950 overflow-hidden">
+            <AnimatePresence>
+              <motion.img
+                key={currentImageIndex}
+                src={activeSlides[currentImageIndex] || activeSlides[0]}
+                alt="Taita Taveta Landscape"
+                initial={{ opacity: 0, scale: 1.03 }}
+                animate={{ opacity: 0.9, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            </AnimatePresence>
+            {/* Soft, balanced uniform tint - crisp and prominent, no heavy fade on one side */}
+            <div className="absolute inset-0 bg-gradient-to-t from-gray-950/85 via-black/35 to-black/25 pointer-events-none"></div>
+          </div>
+
+          {/* Hero Content */}
+          <div className="relative z-10 p-6 sm:p-12 lg:p-16 max-w-3xl w-full">
+            <span className="inline-block py-1 px-3.5 rounded-full bg-green-700/80 backdrop-blur-md text-green-200 text-xs sm:text-sm font-bold tracking-wider uppercase mb-5 border border-green-500/40 shadow-sm">
+              {heroContent?.welcomeTag || 'Datoni ya Rika • Welcome to Taita Taveta'}
             </span>
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl font-extrabold mb-6 leading-tight">
-              The Land of <span className="text-yellow-400 drop-shadow-md">Endless Potential</span> & Rich Heritage
+            <h1 className={`text-3xl sm:text-5xl lg:text-6xl font-black mb-5 leading-tight ${heroContent?.titleColor || 'text-white'} drop-shadow-lg`}>
+              {heroContent?.title || 'The Land of Endless Potential & Rich Heritage'}
             </h1>
-            <p className="text-lg sm:text-xl text-gray-200 mb-10 max-w-2xl leading-relaxed drop-shadow-sm">
-              Official portal for the County Government. Access public services, discover investment opportunities, and explore our majestic tourist destinations.
+            <p className="text-base sm:text-lg text-gray-100 mb-8 max-w-2xl leading-relaxed drop-shadow-md">
+              {heroContent?.subtitle || 'Official portal for the County Government. Access public services, discover investment opportunities, and explore our majestic tourist destinations.'}
             </p>
-            <div className="flex flex-wrap gap-4">
-              <Link to="/about" className="px-8 py-4 bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg transition-colors flex items-center shadow-lg shadow-green-900/20">
-                Our Government
-              </Link>
-              <Link to="/tourism" className="px-8 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white font-medium rounded-lg transition-colors flex items-center shadow-lg">
-                Explore Tourism
-              </Link>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-3.5">
+              {(heroContent?.actionButtons && heroContent.actionButtons.length > 0
+                ? heroContent.actionButtons
+                : [
+                    { id: 'btn_1', label: 'Our Government', url: '/about', color: 'green' as const },
+                    { id: 'btn_2', label: 'Explore Tourism', url: '/tourism', color: 'orange' as const }
+                  ]
+              ).map((btn, idx) => {
+                const buttonColor = btn.color || (idx % 2 === 0 ? 'green' : 'orange');
+                let colorClasses = 'bg-green-700 hover:bg-green-800 text-white shadow-lg shadow-green-950/30 border border-green-600/50';
+                
+                if (buttonColor === 'orange') {
+                  colorClasses = 'bg-orange-600 hover:bg-orange-700 text-white shadow-lg shadow-orange-950/30 border border-orange-500/50';
+                } else if (buttonColor === 'gold') {
+                  colorClasses = 'bg-amber-500 hover:bg-amber-600 text-gray-950 font-extrabold shadow-lg shadow-amber-950/30 border border-amber-400/50';
+                } else if (buttonColor === 'dark') {
+                  colorClasses = 'bg-gray-900/90 hover:bg-gray-900 text-white shadow-lg border border-gray-700/60 backdrop-blur-md';
+                } else if (buttonColor === 'white') {
+                  colorClasses = 'bg-white/20 hover:bg-white/30 text-white border border-white/40 backdrop-blur-md shadow-lg';
+                }
+
+                return (
+                  <Link
+                    key={btn.id || idx}
+                    to={btn.url || '/'}
+                    className={`px-6 py-3 rounded-xl text-sm font-bold transition-all transform hover:-translate-y-0.5 flex items-center ${colorClasses}`}
+                  >
+                    <span>{btn.label}</span>
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Link>
+                );
+              })}
             </div>
           </div>
-          
+
           {/* Slideshow Indicators */}
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
-            {heroImages.map((_, index) => (
+          <div className="absolute bottom-6 right-6 flex space-x-2 z-20 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+            {activeSlides.map((_, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                  index === currentImageIndex ? 'bg-yellow-400 w-8' : 'bg-white/50 hover:bg-white/80'
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  index === currentImageIndex ? 'bg-orange-500 w-6' : 'bg-white/50 hover:bg-white/80 w-2'
                 }`}
                 aria-label={`Go to slide ${index + 1}`}
               />
