@@ -1,4 +1,127 @@
-import { NewsItem, EventItem, Department, Official, TouristSite, Document, Vacancy, GovernorMessage } from './types';
+import { NewsItem, EventItem, Department, Official, TouristSite, Document, Vacancy, GovernorMessage, SystemUser, AuditLog } from './types';
+
+export const initialSystemUsers: SystemUser[] = [
+  {
+    id: 'usr-1',
+    name: 'H.E. Admin Director',
+    email: 'admin@taitataveta.go.ke',
+    payrollNumber: 'TT-1001',
+    password: 'admin123',
+    role: 'Super Admin',
+    departmentIds: ['*'],
+    status: 'Active',
+    createdAt: '2026-01-10',
+    lastLogin: '2026-07-27 12:30',
+    permissions: {
+      canAdd: true,
+      canEdit: true,
+      canSoftDelete: true,
+      canHardDelete: true,
+      canManageUsers: true,
+      canManageGlobalSettings: true,
+    }
+  },
+  {
+    id: 'usr-2',
+    name: 'Dr. Mercy Mwakio',
+    email: 'health.comm@taitataveta.go.ke',
+    payrollNumber: 'TT-1002',
+    password: 'health123',
+    role: 'Communication Officer',
+    departmentIds: ['dept-2'], // Health Services
+    status: 'Active',
+    createdAt: '2026-02-15',
+    lastLogin: '2026-07-27 09:15',
+    permissions: {
+      canAdd: true,
+      canEdit: true,
+      canSoftDelete: true,
+      canHardDelete: false,
+      canManageUsers: false,
+      canManageGlobalSettings: false,
+    }
+  },
+  {
+    id: 'usr-3',
+    name: 'Eng. James Kilalo',
+    email: 'agri.comm@taitataveta.go.ke',
+    payrollNumber: 'TT-1003',
+    password: 'agri123',
+    role: 'Communication Officer',
+    departmentIds: ['dept-4'], // Agriculture, Livestock and Fisheries
+    status: 'Active',
+    createdAt: '2026-03-01',
+    lastLogin: '2026-07-26 16:45',
+    permissions: {
+      canAdd: true,
+      canEdit: true,
+      canSoftDelete: true,
+      canHardDelete: false,
+      canManageUsers: false,
+      canManageGlobalSettings: false,
+    }
+  },
+  {
+    id: 'usr-4',
+    name: 'Ms. Agnes Mwatate',
+    email: 'finance.comm@taitataveta.go.ke',
+    payrollNumber: 'TT-1004',
+    password: 'finance123',
+    role: 'Communication Officer',
+    departmentIds: ['dept-1'], // Finance and Economic Planning
+    status: 'Active',
+    createdAt: '2026-03-12',
+    lastLogin: '2026-07-25 14:20',
+    permissions: {
+      canAdd: true,
+      canEdit: true,
+      canSoftDelete: true,
+      canHardDelete: false,
+      canManageUsers: false,
+      canManageGlobalSettings: false,
+    }
+  },
+  {
+    id: 'usr-5',
+    name: 'Mr. David Mwakio',
+    email: 'tourism.admin@taitataveta.go.ke',
+    payrollNumber: 'TT-1005',
+    password: 'tourism123',
+    role: 'Department Admin',
+    departmentIds: ['dept-3'], // Tourism and Natural Resources
+    status: 'Active',
+    createdAt: '2026-04-05',
+    lastLogin: '2026-07-24 11:00',
+    permissions: {
+      canAdd: true,
+      canEdit: true,
+      canSoftDelete: true,
+      canHardDelete: false,
+      canManageUsers: false,
+      canManageGlobalSettings: false,
+    }
+  },
+  {
+    id: 'usr-6',
+    name: 'Auditor General Officer',
+    email: 'audit@taitataveta.go.ke',
+    payrollNumber: 'TT-1006',
+    password: 'audit123',
+    role: 'Auditor',
+    departmentIds: ['*'],
+    status: 'Active',
+    createdAt: '2026-05-10',
+    lastLogin: '2026-07-20 08:00',
+    permissions: {
+      canAdd: false,
+      canEdit: false,
+      canSoftDelete: false,
+      canHardDelete: false,
+      canManageUsers: false,
+      canManageGlobalSettings: false,
+    }
+  }
+];
 
 export const departments: Department[] = [
   { id: 'dept-1', name: 'Finance and Economic Planning', description: 'Manages the county budget, economic planning, and revenue collection.', mandate: 'To provide leadership in financial management, economic planning, and resource mobilization.' },
@@ -40,11 +163,11 @@ export const touristSites: TouristSite[] = [
 ];
 
 export const officialDocuments: Document[] = [
-  { id: 'doc-1', title: 'County Integrated Development Plan (CIDP) 2023-2027', type: 'Policy', datePosted: '2023-08-10', size: '4.5 MB' },
-  { id: 'doc-2', title: 'FY 2026/2027 Approved Budget Estimates', type: 'Budget', datePosted: '2026-06-30', size: '2.1 MB' },
-  { id: 'doc-3', title: 'Annual Development Plan 2026/2027', type: 'Policy', datePosted: '2025-09-15', size: '1.8 MB' },
-  { id: 'doc-4', title: 'TENDER: Construction of ECD Center in Mwatate', type: 'Tender', datePosted: '2026-07-22', size: '850 KB' },
-  { id: 'doc-5', title: 'TENDER: Supply of Medical Equipment to Moi Hospital', type: 'Tender', datePosted: '2026-07-25', size: '1.2 MB' },
+  { id: 'doc-1', title: 'County Integrated Development Plan (CIDP) 2023-2027', type: 'Policy', datePosted: '2023-08-10', size: '4.5 MB', departmentId: 'dept-1' },
+  { id: 'doc-2', title: 'FY 2026/2027 Approved Budget Estimates', type: 'Budget', datePosted: '2026-06-30', size: '2.1 MB', departmentId: 'dept-1' },
+  { id: 'doc-3', title: 'Annual Development Plan 2026/2027', type: 'Policy', datePosted: '2025-09-15', size: '1.8 MB', departmentId: 'dept-1' },
+  { id: 'doc-4', title: 'TENDER: Construction of ECD Center in Mwatate', type: 'Tender', datePosted: '2026-07-22', size: '850 KB', departmentId: 'dept-5' },
+  { id: 'doc-5', title: 'TENDER: Supply of Medical Equipment to Moi Hospital', type: 'Tender', datePosted: '2026-07-25', size: '1.2 MB', departmentId: 'dept-2' },
 ];
 
 export const vacancies: Vacancy[] = [
@@ -170,5 +293,96 @@ export const initialCountyBranding = {
   countyTagline: 'County Government',
   motto: 'Datoni ya Rika'
 };
+
+export const initialAuditLogs: AuditLog[] = [
+  {
+    id: 'log-101',
+    timestamp: '2026-07-27 13:42:10',
+    userId: 'usr-1',
+    userName: 'H.E. Admin Director',
+    userRole: 'Super Admin',
+    userEmail: 'admin@taitataveta.go.ke',
+    action: 'SESSION_SWITCH',
+    module: 'System',
+    details: 'Switched active session to Super Admin account (H.E. Admin Director)',
+    ipAddress: '197.232.88.14'
+  },
+  {
+    id: 'log-102',
+    timestamp: '2026-07-27 12:15:00',
+    userId: 'usr-2',
+    userName: 'Dr. Mercy Mwakio',
+    userRole: 'Communication Officer',
+    userEmail: 'health.comm@taitataveta.go.ke',
+    action: 'CREATE',
+    module: 'Vacancies',
+    details: 'Published new career opportunity: Medical Officers & Specialist Doctors (Ref: TTC/CPSB/2026/01)',
+    departmentId: 'dept-2',
+    ipAddress: '197.232.90.41'
+  },
+  {
+    id: 'log-103',
+    timestamp: '2026-07-27 11:05:44',
+    userId: 'usr-1',
+    userName: 'H.E. Admin Director',
+    userRole: 'Super Admin',
+    userEmail: 'admin@taitataveta.go.ke',
+    action: 'GLOBAL_SETTINGS_UPDATE',
+    module: 'Emergency Alert',
+    details: 'Activated emergency alert banner: HEAVY RAINFALL & FLASH FLOOD ADVISORY',
+    ipAddress: '197.232.88.14'
+  },
+  {
+    id: 'log-104',
+    timestamp: '2026-07-26 16:45:12',
+    userId: 'usr-3',
+    userName: 'Eng. James Kilalo',
+    userRole: 'Communication Officer',
+    userEmail: 'agri.comm@taitataveta.go.ke',
+    action: 'CREATE',
+    module: 'News',
+    details: 'Published press release: Launch of County Smallholder Irrigation & Banana Processing Plant in Taveta',
+    departmentId: 'dept-4',
+    ipAddress: '41.89.22.102'
+  },
+  {
+    id: 'log-105',
+    timestamp: '2026-07-26 14:20:00',
+    userId: 'usr-1',
+    userName: 'H.E. Admin Director',
+    userRole: 'Super Admin',
+    userEmail: 'admin@taitataveta.go.ke',
+    action: 'PERMISSIONS_UPDATE',
+    module: 'Users',
+    details: 'Updated role permissions for Dr. Mercy Mwakio (Assigned to Department of Health Services)',
+    ipAddress: '197.232.88.14'
+  },
+  {
+    id: 'log-106',
+    timestamp: '2026-07-25 10:30:15',
+    userId: 'usr-2',
+    userName: 'Dr. Mercy Mwakio',
+    userRole: 'Communication Officer',
+    userEmail: 'health.comm@taitataveta.go.ke',
+    action: 'UPDATE',
+    module: 'Events',
+    details: 'Updated venue details for Taita Taveta Health Summit & Free Medical Camp 2026',
+    departmentId: 'dept-2',
+    ipAddress: '197.232.90.41'
+  },
+  {
+    id: 'log-107',
+    timestamp: '2026-07-24 09:12:33',
+    userId: 'usr-1',
+    userName: 'H.E. Admin Director',
+    userRole: 'Super Admin',
+    userEmail: 'admin@taitataveta.go.ke',
+    action: 'SOFT_DELETE',
+    module: 'Documents',
+    details: 'Moved obsolete policy document "Taita Taveta Budget Draft FY 2024-2025" to trash bin',
+    ipAddress: '197.232.88.14'
+  }
+];
+
 
 

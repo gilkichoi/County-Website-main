@@ -1,3 +1,31 @@
+export type UserRole = 'Super Admin' | 'Communication Officer' | 'Department Admin' | 'Auditor';
+
+export interface UserPermissions {
+  canAdd: boolean;
+  canEdit: boolean;
+  canSoftDelete: boolean;
+  canHardDelete: boolean;
+  canManageUsers: boolean;
+  canManageGlobalSettings: boolean;
+}
+
+export interface SystemUser {
+  id: string;
+  name: string;
+  email: string;
+  payrollNumber?: string;
+  password?: string;
+  role: UserRole;
+  departmentIds: string[]; // e.g. ['dept-2'] for Health Services or ['*'] for all
+  status: 'Active' | 'Suspended';
+  createdAt: string;
+  lastLogin?: string;
+  permissions: UserPermissions;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -7,6 +35,9 @@ export interface NewsItem {
   category: 'Press Release' | 'General' | 'Notice';
   mainImage?: string;
   gallery?: string[];
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface EventItem {
@@ -17,6 +48,9 @@ export interface EventItem {
   departmentId?: string;
   mainImage?: string;
   gallery?: string[];
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Department {
@@ -24,6 +58,9 @@ export interface Department {
   name: string;
   description: string;
   mandate: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Official {
@@ -34,6 +71,9 @@ export interface Official {
   type: 'Governor' | 'Deputy Governor' | 'CECM' | 'CCO';
   imagePlaceholder: string;
   profile?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface HeroActionButton {
@@ -65,6 +105,10 @@ export interface TouristSite {
   description: string;
   location: string;
   imageUrl: string;
+  departmentId?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Document {
@@ -74,6 +118,10 @@ export interface Document {
   datePosted: string;
   size: string;
   fileData?: string;
+  departmentId?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Vacancy {
@@ -92,6 +140,9 @@ export interface Vacancy {
   viewsCount?: number;
   downloadsCount?: number;
   datePosted?: string;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface GovernorMessage {
@@ -109,5 +160,19 @@ export interface EmergencyAlert {
   type: 'danger' | 'warning' | 'info';
   linkUrl?: string;
   linkText?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  userEmail: string;
+  action: 'CREATE' | 'UPDATE' | 'SOFT_DELETE' | 'RESTORE' | 'HARD_DELETE' | 'SESSION_SWITCH' | 'GLOBAL_SETTINGS_UPDATE' | 'PERMISSIONS_UPDATE';
+  module: 'Departments' | 'News' | 'Events' | 'Documents' | 'Vacancies' | 'Leadership' | 'Tourism' | 'Users' | 'Emergency Alert' | 'Hero Slideshow' | 'County Branding' | 'Governor Statement' | 'System';
+  details: string;
+  departmentId?: string;
+  ipAddress?: string;
 }
 

@@ -1,15 +1,68 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { Settings, Users, FileText, Calendar, Building, Plus, Trash2, Edit2, X, UserCheck, AlertTriangle, ShieldAlert, CheckCircle2, Image, Upload, BadgeCheck, Shield, Compass, Briefcase, Clock, Eye, Download, Building2 } from 'lucide-react';
-import { Department, NewsItem, EventItem, Document, GovernorMessage, EmergencyAlert, Official, HeroContent, CountyBranding, TouristSite, Vacancy } from '../types';
-
-function safeConfirm(msg: string): boolean {
-  try {
-    return window.confirm(msg);
-  } catch {
-    return true;
-  }
-}
+import { 
+  Settings, 
+  Users, 
+  FileText, 
+  Calendar, 
+  Building, 
+  Plus, 
+  Trash2, 
+  Edit2, 
+  X, 
+  UserCheck, 
+  AlertTriangle, 
+  ShieldAlert, 
+  CheckCircle2, 
+  Image, 
+  Upload, 
+  BadgeCheck, 
+  Shield, 
+  Compass, 
+  Briefcase, 
+  Clock, 
+  Eye, 
+  Download, 
+  Building2,
+  RotateCcw,
+  Lock,
+  ShieldCheck,
+  Search,
+  Filter,
+  Activity,
+  LogOut,
+  Camera,
+  Link as LinkIcon
+} from 'lucide-react';
+import { 
+  Department, 
+  NewsItem, 
+  EventItem, 
+  Document, 
+  GovernorMessage, 
+  EmergencyAlert, 
+  Official, 
+  HeroContent, 
+  CountyBranding, 
+  TouristSite, 
+  Vacancy 
+} from '../types';
+import { UserSessionBar } from '../components/UserSessionBar';
+import { UsersManager } from '../components/UsersManager';
+import { AuditLogsManager } from '../components/AuditLogsManager';
+import { StaffOtpLogin } from '../components/StaffOtpLogin';
+import { GalleryUploader } from '../components/GalleryUploader';
+import { safeConfirm } from '../utils/safeConfirm';
+import { 
+  isSuperAdmin, 
+  isCommunicationOfficer, 
+  canUserAccessDepartment, 
+  canUserAddContent, 
+  canUserEditContent, 
+  canUserSoftDelete, 
+  canUserHardDelete, 
+  canUserManageGlobalSettings 
+} from '../utils/permissions';
 
 function compressAndReadImage(
   file: File,
@@ -40,7 +93,7 @@ function compressAndReadImage(
           }
           if (height > maxHeight) {
             width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
+            width = maxHeight;
           }
 
           canvas.width = Math.max(1, width);
@@ -65,33 +118,155 @@ function compressAndReadImage(
   });
 }
 
-export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'departments' | 'news' | 'events' | 'documents' | 'vacancies' | 'governor' | 'alert' | 'slideshow' | 'leadership' | 'logo' | 'tourism'>('alert');
-  
+function AccessRestrictedNotice({ title = 'Global Administration Settings Restricted' }: { title?: string }) {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="mb-8 border-b border-gray-200 pb-5">
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-          <Settings className="w-8 h-8 mr-3 text-green-700" />
-          Admin Dashboard
-        </h1>
-        <p className="mt-2 text-sm text-gray-500">Manage slideshow, CECMs & CCOs leadership, tourism sites, county logo, emergency alerts, departments, news, events, documents, and careers/vacancies.</p>
+    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-8 text-center space-y-3">
+      <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-700 mx-auto border border-amber-200 shadow-2xs">
+        <Lock className="w-6 h-6" />
+      </div>
+      <h3 className="font-bold text-gray-900 text-base">{title}</h3>
+      <p className="text-xs text-amber-900 max-w-lg mx-auto leading-relaxed">
+        Communication Officers are scoped strictly to managing news, events, public documents, and career vacancies for their assigned county department(s). Global branding, hero slideshows, and emergency banners require <strong>Super Administrator</strong> authority.
+      </p>
+      <p className="text-[11px] text-gray-500 italic">
+        Tip: Use the "Switch Active Session" bar at the top to log in as a Super Admin to modify global settings.
+      </p>
+    </div>
+  );
+}
+
+export function AdminDashboard() {
+  const { currentUser, setCurrentUser, newsItems, eventItems, vacancies, auditLogs, allSystemUsers } = useData();
+  const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('taita_taveta_staff_authenticated') === 'true';
+  });
+
+  const [activeTab, setActiveTab] = useState<
+    'users' | 'audit' | 'departments' | 'news' | 'events' | 'documents' | 'vacancies' | 'governor' | 'alert' | 'slideshow' | 'leadership' | 'logo' | 'tourism'
+  >('users');
+
+  const canManageGlobal = canUserManageGlobalSettings(currentUser);
+
+  if (!isStaffAuthenticated) {
+    return (
+      <div className="py-6">
+        <StaffOtpLogin
+          onAuthenticated={(user) => {
+            setCurrentUser(user);
+            setIsStaffAuthenticated(true);
+            localStorage.setItem('taita_taveta_staff_authenticated', 'true');
+          }}
+        />
+      </div>
+    );
+  }
+
+  const handleLockSession = () => {
+    setIsStaffAuthenticated(false);
+    localStorage.removeItem('taita_taveta_staff_authenticated');
+  };
+
+  const activeNewsCount = newsItems.filter(n => !n.deleted).length;
+  const activeEventsCount = eventItems.filter(e => !e.deleted).length;
+  const activeVacanciesCount = vacancies.filter(v => v.status === 'Open').length;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+      {/* Authenticated Staff Security Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-900 text-white p-3.5 sm:px-5 rounded-2xl mb-6 shadow-md border border-slate-800 gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse shrink-0" />
+          <span className="font-bold text-slate-300">Staff Portal Session Active:</span>
+          <span className="font-extrabold text-emerald-300">{currentUser.name}</span>
+          <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-800/80 rounded-md text-[10px] font-black uppercase tracking-wider">
+            {currentUser.role}
+          </span>
+          <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded-md text-[10px] font-bold border border-slate-700">
+            2FA OTP Authenticated
+          </span>
+        </div>
+
+        <button
+          onClick={handleLockSession}
+          className="inline-flex items-center px-3 py-1.5 bg-red-600/90 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-all border border-red-500/30 shadow-xs shrink-0"
+        >
+          <LogOut className="w-3.5 h-3.5 mr-1.5" />
+          Lock Portal / Sign Out
+        </button>
+      </div>
+
+      {/* Quick KPI Overview Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Published News</span>
+            <span className="text-xl sm:text-2xl font-black text-gray-900">{activeNewsCount}</span>
+          </div>
+          <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+            <FileText className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Upcoming Events</span>
+            <span className="text-xl sm:text-2xl font-black text-gray-900">{activeEventsCount}</span>
+          </div>
+          <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+            <Calendar className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Open Careers</span>
+            <span className="text-xl sm:text-2xl font-black text-gray-900">{activeVacanciesCount}</span>
+          </div>
+          <div className="w-9 h-9 bg-emerald-50 text-emerald-700 rounded-xl flex items-center justify-center">
+            <Briefcase className="w-5 h-5" />
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-2xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">Audit Log Entries</span>
+            <span className="text-xl sm:text-2xl font-black text-gray-900">{auditLogs.length}</span>
+          </div>
+          <div className="w-9 h-9 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center">
+            <Activity className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* User Session Bar Switcher */}
+      <UserSessionBar />
+
+      <div className="mb-6 border-b border-gray-200 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 flex items-center">
+            <Settings className="w-7 h-7 sm:w-8 sm:h-8 mr-3 text-green-700" />
+            County Content & Administration Control Panel
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-gray-500">
+            Role-Based Access Control (RBAC) portal for managing department vacancies, news, events, documents, and system officers.
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-8">
         <aside className="w-full md:w-64 shrink-0">
           <nav className="flex flex-col space-y-1">
             <TabButton 
-              active={activeTab === 'alert'} 
-              onClick={() => setActiveTab('alert')} 
-              icon={<ShieldAlert className="w-5 h-5 mr-3 text-red-600" />} 
-              label="Emergency Alert" 
+              active={activeTab === 'users'} 
+              onClick={() => setActiveTab('users')} 
+              icon={<ShieldCheck className="w-5 h-5 mr-3 text-purple-600" />} 
+              label="Users & Role Management" 
             />
             <TabButton 
-              active={activeTab === 'slideshow'} 
-              onClick={() => setActiveTab('slideshow')} 
-              icon={<Image className="w-5 h-5 mr-3 text-green-700" />} 
-              label="Slideshow & Hero" 
+              active={activeTab === 'audit'} 
+              onClick={() => setActiveTab('audit')} 
+              icon={<Activity className="w-5 h-5 mr-3 text-orange-600" />} 
+              label="Audit Logs & History" 
             />
             <TabButton 
               active={activeTab === 'vacancies'} 
@@ -100,100 +275,128 @@ export function AdminDashboard() {
               label="Careers & Vacancies" 
             />
             <TabButton 
+              active={activeTab === 'news'} 
+              onClick={() => setActiveTab('news')} 
+              icon={<FileText className="w-5 h-5 mr-3 text-blue-600" />} 
+              label="County News" 
+            />
+            <TabButton 
+              active={activeTab === 'events'} 
+              onClick={() => setActiveTab('events')} 
+              icon={<Calendar className="w-5 h-5 mr-3 text-indigo-600" />} 
+              label="County Events" 
+            />
+            <TabButton 
+              active={activeTab === 'documents'} 
+              onClick={() => setActiveTab('documents')} 
+              icon={<FileText className="w-5 h-5 mr-3 text-amber-600" />} 
+              label="Official Documents" 
+            />
+            <TabButton 
+              active={activeTab === 'departments'} 
+              onClick={() => setActiveTab('departments')} 
+              icon={<Building className="w-5 h-5 mr-3 text-teal-600" />} 
+              label="County Departments" 
+            />
+            <TabButton 
               active={activeTab === 'leadership'} 
               onClick={() => setActiveTab('leadership')} 
-              icon={<Users className="w-5 h-5 mr-3 text-blue-600" />} 
+              icon={<Users className="w-5 h-5 mr-3 text-blue-700" />} 
               label="CECMs & CCOs Leadership" 
             />
             <TabButton 
               active={activeTab === 'tourism'} 
               onClick={() => setActiveTab('tourism')} 
               icon={<Compass className="w-5 h-5 mr-3 text-emerald-600" />} 
-              label="Tourism Sites" 
+              label="Tourism Destinations" 
+            />
+
+            <div className="pt-3 pb-1 border-t border-gray-200 px-3 text-[10px] font-black uppercase tracking-wider text-gray-400">
+              Global County Settings
+            </div>
+
+            <TabButton 
+              active={activeTab === 'alert'} 
+              onClick={() => setActiveTab('alert')} 
+              icon={<ShieldAlert className="w-5 h-5 mr-3 text-red-600" />} 
+              label="Emergency Alerts" 
+            />
+            <TabButton 
+              active={activeTab === 'slideshow'} 
+              onClick={() => setActiveTab('slideshow')} 
+              icon={<Image className="w-5 h-5 mr-3 text-green-700" />} 
+              label="Hero Slideshow" 
             />
             <TabButton 
               active={activeTab === 'logo'} 
               onClick={() => setActiveTab('logo')} 
               icon={<Shield className="w-5 h-5 mr-3 text-yellow-600" />} 
-              label="County Logo & Branding" 
+              label="Logo & Branding" 
             />
             <TabButton 
               active={activeTab === 'governor'} 
               onClick={() => setActiveTab('governor')} 
-              icon={<UserCheck className="w-5 h-5 mr-3" />} 
-              label="Governor Message" 
-            />
-            <TabButton 
-              active={activeTab === 'departments'} 
-              onClick={() => setActiveTab('departments')} 
-              icon={<Building className="w-5 h-5 mr-3" />} 
-              label="Departments" 
-            />
-            <TabButton 
-              active={activeTab === 'news'} 
-              onClick={() => setActiveTab('news')} 
-              icon={<FileText className="w-5 h-5 mr-3" />} 
-              label="News" 
-            />
-            <TabButton 
-              active={activeTab === 'events'} 
-              onClick={() => setActiveTab('events')} 
-              icon={<Calendar className="w-5 h-5 mr-3" />} 
-              label="Events" 
-            />
-            <TabButton 
-              active={activeTab === 'documents'} 
-              onClick={() => setActiveTab('documents')} 
-              icon={<FileText className="w-5 h-5 mr-3" />} 
-              label="Documents" 
+              icon={<UserCheck className="w-5 h-5 mr-3 text-cyan-600" />} 
+              label="Governor Statement" 
             />
           </nav>
         </aside>
 
-        <main className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
-          {activeTab === 'alert' && <EmergencyAlertManager />}
-          {activeTab === 'slideshow' && <SlideshowManager />}
-          {activeTab === 'vacancies' && <VacanciesManager />}
-          {activeTab === 'leadership' && <LeadershipManager />}
-          {activeTab === 'tourism' && <TourismManager />}
-          {activeTab === 'logo' && <CountyLogoManager />}
-          {activeTab === 'governor' && <GovernorMessageManager />}
+        <main className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+          {activeTab === 'users' && <UsersManager />}
+          {activeTab === 'audit' && <AuditLogsManager />}
           {activeTab === 'departments' && <DepartmentsManager />}
           {activeTab === 'news' && <NewsManager />}
           {activeTab === 'events' && <EventsManager />}
           {activeTab === 'documents' && <DocumentsManager />}
+          {activeTab === 'vacancies' && <VacanciesManager />}
+          {activeTab === 'leadership' && <LeadershipManager />}
+          {activeTab === 'tourism' && <TourismManager />}
+
+
+          {/* Global Settings (Super Admin Only) */}
+          {activeTab === 'alert' && (canManageGlobal ? <EmergencyAlertManager /> : <AccessRestrictedNotice title="Emergency Alerts Configuration Restricted" />)}
+          {activeTab === 'slideshow' && (canManageGlobal ? <SlideshowManager /> : <AccessRestrictedNotice title="Hero Slideshow Configuration Restricted" />)}
+          {activeTab === 'logo' && (canManageGlobal ? <CountyLogoManager /> : <AccessRestrictedNotice title="County Logo & Branding Restricted" />)}
+          {activeTab === 'governor' && (canManageGlobal ? <GovernorMessageManager /> : <AccessRestrictedNotice title="Governor Statement Restricted" />)}
         </main>
       </div>
     </div>
   );
 }
 
-
-function TabButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+      className={`flex items-center px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all ${
         active 
-          ? 'bg-green-50 text-green-700' 
-          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          ? 'bg-green-700 text-white shadow-xs' 
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
       {icon}
-      {label}
+      <span>{label}</span>
     </button>
   );
 }
 
+/* =========================================================================
+   DEPARTMENTS MANAGER (Active & Soft Delete Trash Bin + Department Scoped)
+   ========================================================================= */
 function DepartmentsManager() {
-  const { departments, saveDepartment, deleteDepartment } = useData();
+  const { allDepartments, saveDepartment, deleteDepartment, restoreDepartment, hardDeleteDepartment, currentUser } = useData();
   const [editing, setEditing] = useState<Partial<Department> | null>(null);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeDepts = allDepartments.filter(d => !d.deleted);
+  const trashedDepts = allDepartments.filter(d => d.deleted);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (editing && editing.name && editing.description && editing.mandate) {
       saveDepartment({
-        id: editing.id || Date.now().toString(),
+        id: editing.id || `dept-${Date.now()}`,
         name: editing.name,
         description: editing.description,
         mandate: editing.mandate
@@ -203,56 +406,163 @@ function DepartmentsManager() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Departments</h2>
-        <button onClick={() => setEditing({})} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-          <Plus className="w-4 h-4 mr-2" /> Add Department
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">County Departments</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Manage executive departments, mandates, and overview summaries.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button
+            onClick={() => setEditing({})}
+            className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm"
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> Add New Department
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button
+          onClick={() => setViewTab('active')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}
+        >
+          Active Departments ({activeDepts.length})
+        </button>
+        <button
+          onClick={() => setViewTab('trash')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}
+        >
+          <Trash2 className="w-3.5 h-3.5 mr-1" />
+          Trash Bin ({trashedDepts.length})
         </button>
       </div>
 
       {editing !== null && (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">{editing.id ? 'Edit' : 'Add'} Department</h3>
-            <button type="button" onClick={() => setEditing(null)}><X className="w-5 h-5 text-gray-500" /></button>
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{editing.id ? 'Edit' : 'Add'} Department</h3>
+            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input required value={editing.name || ''} onChange={e => setEditing({...editing, name: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block text-xs font-bold text-gray-700 mb-1">Department Name *</label>
+              <input required value={editing.name || ''} onChange={e => setEditing({...editing, name: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea required value={editing.description || ''} onChange={e => setEditing({...editing, description: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" rows={2} />
+              <label className="block text-xs font-bold text-gray-700 mb-1">Overview Description *</label>
+              <textarea required value={editing.description || ''} onChange={e => setEditing({...editing, description: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none" rows={2} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mandate</label>
-              <textarea required value={editing.mandate || ''} onChange={e => setEditing({...editing, mandate: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" rows={2} />
+              <label className="block text-xs font-bold text-gray-700 mb-1">Official Mandate *</label>
+              <textarea required value={editing.mandate || ''} onChange={e => setEditing({...editing, mandate: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none" rows={2} />
             </div>
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">Save</button>
+            <div className="flex justify-end space-x-2 pt-2">
+              <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border rounded-xl text-xs font-bold">Cancel</button>
+              <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl text-xs font-bold">Save Department</button>
+            </div>
           </div>
         </form>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-3 text-left">Department Name</th>
+              <th className="px-6 py-3 text-left">Mandate Overview</th>
+              {viewTab === 'trash' && <th className="px-6 py-3 text-left">Deleted By / Date</th>}
+              <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {departments.map(dept => (
-              <tr key={dept.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{dept.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => setEditing(dept)} className="text-blue-600 hover:text-blue-900 mr-4"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => { if(safeConfirm('Are you sure?')) deleteDepartment(dept.id); }} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
+          <tbody className="divide-y divide-gray-100">
+            {(viewTab === 'active' ? activeDepts : trashedDepts).map(dept => {
+              const canAccess = canUserAccessDepartment(currentUser, dept.id);
+
+              return (
+                <tr key={dept.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-bold text-gray-900">
+                    {dept.name}
+                    {!canAccess && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded">
+                        Outside Scope
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-gray-600 line-clamp-2 max-w-md">{dept.mandate}</td>
+                  
+                  {viewTab === 'trash' && (
+                    <td className="px-6 py-4 text-gray-500 text-[11px]">
+                      <span>{dept.deletedBy || 'System'}</span>
+                      <span className="block text-[10px] text-gray-400">{dept.deletedAt}</span>
+                    </td>
+                  )}
+
+                  <td className="px-6 py-4 text-right">
+                    {viewTab === 'active' ? (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          disabled={!canAccess || !canUserEditContent(currentUser)}
+                          onClick={() => setEditing(dept)}
+                          className={`p-1.5 rounded-lg font-bold text-xs ${
+                            canAccess ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                          title={canAccess ? 'Edit Department' : 'You do not have access to this department'}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          disabled={!canAccess || !canUserSoftDelete(currentUser)}
+                          onClick={() => {
+                            if (safeConfirm(`Soft delete department "${dept.name}"?`)) {
+                              deleteDepartment(dept.id);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg font-bold text-xs ${
+                            canAccess ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => restoreDepartment(dept.id)}
+                          className="px-2.5 py-1 bg-green-50 text-green-800 hover:bg-green-100 rounded-lg font-bold text-[11px] flex items-center"
+                        >
+                          <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                        </button>
+                        {isSuperAdmin(currentUser) && (
+                          <button
+                            onClick={() => {
+                              if (safeConfirm(`Permanently delete department "${dept.name}"?`)) {
+                                hardDeleteDepartment(dept.id);
+                              }
+                            }}
+                            className="px-2 py-1 bg-red-600 text-white hover:bg-red-700 rounded-lg font-bold text-[11px]"
+                          >
+                            Hard Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {(viewTab === 'active' ? activeDepts : trashedDepts).length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-8 text-center text-gray-400">
+                  {viewTab === 'active' ? 'No departments found.' : 'Trash bin is empty.'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -260,15 +570,36 @@ function DepartmentsManager() {
   );
 }
 
+/* =========================================================================
+   NEWS MANAGER (Active & Soft Delete Trash Bin + Department Scoped)
+   ========================================================================= */
 function NewsManager() {
-  const { newsItems, saveNewsItem, deleteNewsItem, departments } = useData();
+  const { allNewsItems, saveNewsItem, deleteNewsItem, restoreNewsItem, hardDeleteNewsItem, departments, currentUser } = useData();
   const [editing, setEditing] = useState<Partial<NewsItem> | null>(null);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeItems = allNewsItems.filter(n => !n.deleted);
+  const trashedItems = allNewsItems.filter(n => n.deleted);
+
+  const getDeptName = (id?: string) => {
+    if (!id) return 'General County';
+    const d = departments.find(dept => dept.id === id);
+    return d ? d.name : id;
+  };
+
+  const handleStartAdd = () => {
+    const defaultDept = isCommunicationOfficer(currentUser) && currentUser.departmentIds[0] !== '*' 
+      ? currentUser.departmentIds[0] 
+      : undefined;
+
+    setEditing({ category: 'General', departmentId: defaultDept, date: new Date().toISOString().split('T')[0] });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (editing && editing.title && editing.summary && editing.category) {
       saveNewsItem({
-        id: editing.id || Date.now().toString(),
+        id: editing.id || `news-${Date.now()}`,
         title: editing.title,
         summary: editing.summary,
         category: editing.category as any,
@@ -282,114 +613,209 @@ function NewsManager() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">News Items</h2>
-        <button onClick={() => setEditing({ category: 'General' })} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-          <Plus className="w-4 h-4 mr-2" /> Add News
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">County Press Releases & News</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Publish official news bulletins and press notices for assigned departments.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={handleStartAdd} className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Publish New News
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button
+          onClick={() => setViewTab('active')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}
+        >
+          Active News ({activeItems.length})
+        </button>
+        <button
+          onClick={() => setViewTab('trash')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}
+        >
+          <Trash2 className="w-3.5 h-3.5 mr-1" />
+          Trash Bin ({trashedItems.length})
         </button>
       </div>
 
       {editing !== null && (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">{editing.id ? 'Edit' : 'Add'} News</h3>
-            <button type="button" onClick={() => setEditing(null)}><X className="w-5 h-5 text-gray-500" /></button>
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{editing.id ? 'Edit' : 'Publish'} News Item</h3>
+            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3 text-xs">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block font-bold text-gray-700 mb-1">Headline Title *</label>
+              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-green-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Summary</label>
-              <textarea required value={editing.summary || ''} onChange={e => setEditing({...editing, summary: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" rows={2} />
+              <label className="block font-bold text-gray-700 mb-1">Article Summary *</label>
+              <textarea required value={editing.summary || ''} onChange={e => setEditing({...editing, summary: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-green-500" rows={2} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <select value={editing.category || 'General'} onChange={e => setEditing({...editing, category: e.target.value as any})} className="w-full border border-gray-300 rounded px-3 py-2">
+                <label className="block font-bold text-gray-700 mb-1">Category *</label>
+                <select value={editing.category || 'General'} onChange={e => setEditing({...editing, category: e.target.value as any})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-semibold outline-none">
                   <option value="General">General</option>
                   <option value="Press Release">Press Release</option>
-                  <option value="Notice">Notice</option>
+                  <option value="Notice">Official Notice</option>
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" required value={editing.date || ''} onChange={e => setEditing({...editing, date: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+                <label className="block font-bold text-gray-700 mb-1">Publication Date *</label>
+                <input type="date" required value={editing.date || ''} onChange={e => setEditing({...editing, date: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none" />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Assigned Department</label>
+                <select 
+                  value={editing.departmentId || ''} 
+                  disabled={isCommunicationOfficer(currentUser) && currentUser.departmentIds.length === 1 && currentUser.departmentIds[0] !== '*'}
+                  onChange={e => setEditing({...editing, departmentId: e.target.value || undefined})} 
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-semibold outline-none"
+                >
+                  <option value="">General County Administration</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id} disabled={!canUserAccessDepartment(currentUser, d.id)}>
+                      {d.name} {!canUserAccessDepartment(currentUser, d.id) ? '(Restricted)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Department (Optional)</label>
-              <select value={editing.departmentId || ''} onChange={e => setEditing({...editing, departmentId: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2">
-                <option value="">None (General)</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+
+            <div className="space-y-2">
+              <label className="block font-bold text-gray-700">Main Article Cover Photo</label>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <input type="file" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    compressAndReadImage(file).then(dataUrl => setEditing({...editing, mainImage: dataUrl}));
+                  }
+                }} className="flex-1 border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white" />
+                {editing.mainImage && (
+                  <div className="relative">
+                    <img src={editing.mainImage} alt="Cover" className="h-16 w-28 object-cover rounded-xl shadow-xs border" />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({...editing, mainImage: ''})}
+                      className="absolute -top-2 -right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-xs"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Main Image (Upload)</label>
-              <input type="file" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    setEditing({...editing, mainImage: reader.result as string});
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              {editing.mainImage && <img src={editing.mainImage} alt="Preview" className="mt-2 h-20 w-32 object-cover rounded shadow-sm" />}
+
+            <GalleryUploader
+              gallery={editing.gallery || []}
+              onChange={g => setEditing({...editing, gallery: g})}
+              compressAndReadImage={compressAndReadImage}
+              label="Article Photo Gallery Pictures"
+            />
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+              <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl font-bold">Save News Article</button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gallery Images (Upload multiple)</label>
-              <input type="file" accept="image/*" multiple onChange={e => {
-                const files = Array.from(e.target.files || []) as File[];
-                const promises = files.map((file: File) => {
-                  return new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(file);
-                  });
-                });
-                Promise.all(promises).then(results => {
-                  setEditing({...editing, gallery: [...(editing.gallery || []), ...results]});
-                });
-              }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              {editing.gallery && editing.gallery.length > 0 && (
-                <div className="flex gap-2 mt-2 overflow-x-auto py-2">
-                  {editing.gallery.map((img, i) => (
-                    <div key={i} className="relative shrink-0">
-                      <img src={img} alt={`Gallery ${i}`} className="h-16 w-16 object-cover rounded shadow-sm" />
-                      <button type="button" onClick={() => setEditing({...editing, gallery: editing.gallery?.filter((_, index) => index !== i)})} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow"><X className="w-3 h-3" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">Save</button>
           </div>
         </form>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-3 text-left">News Headline</th>
+              <th className="px-6 py-3 text-left">Department Scope</th>
+              <th className="px-6 py-3 text-left">Category & Date</th>
+              {viewTab === 'trash' && <th className="px-6 py-3 text-left">Deleted By / Date</th>}
+              <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {newsItems.map(item => (
-              <tr key={item.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-xs">{item.title}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.date}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => setEditing(item)} className="text-blue-600 hover:text-blue-900 mr-4"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => { if(safeConfirm('Are you sure?')) deleteNewsItem(item.id); }} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
+          <tbody className="divide-y divide-gray-100">
+            {(viewTab === 'active' ? activeItems : trashedItems).map(item => {
+              const canAccess = canUserAccessDepartment(currentUser, item.departmentId);
+
+              return (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-bold text-gray-900 max-w-xs truncate">{item.title}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${canAccess ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                      {getDeptName(item.departmentId)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-gray-600">
+                    <span className="font-semibold block">{item.category}</span>
+                    <span className="text-[10px] text-gray-400">{item.date}</span>
+                  </td>
+
+                  {viewTab === 'trash' && (
+                    <td className="px-6 py-4 text-gray-500 text-[11px]">
+                      <span>{item.deletedBy || 'System'}</span>
+                      <span className="block text-[10px] text-gray-400">{item.deletedAt}</span>
+                    </td>
+                  )}
+
+                  <td className="px-6 py-4 text-right">
+                    {viewTab === 'active' ? (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          disabled={!canAccess || !canUserEditContent(currentUser)}
+                          onClick={() => setEditing(item)}
+                          className={`p-1.5 rounded-lg font-bold text-xs ${
+                            canAccess ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          disabled={!canAccess || !canUserSoftDelete(currentUser)}
+                          onClick={() => {
+                            if (safeConfirm(`Soft delete news item "${item.title}"?`)) {
+                              deleteNewsItem(item.id);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg font-bold text-xs ${
+                            canAccess ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button onClick={() => restoreNewsItem(item.id)} className="px-2.5 py-1 bg-green-50 text-green-800 hover:bg-green-100 rounded-lg font-bold text-[11px] flex items-center">
+                          <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                        </button>
+                        {isSuperAdmin(currentUser) && (
+                          <button onClick={() => { if (safeConfirm(`Permanently hard delete "${item.title}"?`)) hardDeleteNewsItem(item.id); }} className="px-2 py-1 bg-red-600 text-white hover:bg-red-700 rounded-lg font-bold text-[11px]">
+                            Hard Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {(viewTab === 'active' ? activeItems : trashedItems).length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">
+                  {viewTab === 'active' ? 'No news articles posted.' : 'Trash bin is empty.'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -397,15 +823,36 @@ function NewsManager() {
   );
 }
 
+/* =========================================================================
+   EVENTS MANAGER (Active & Soft Delete Trash Bin + Department Scoped)
+   ========================================================================= */
 function EventsManager() {
-  const { eventItems, saveEventItem, deleteEventItem, departments } = useData();
+  const { allEventItems, saveEventItem, deleteEventItem, restoreEventItem, hardDeleteEventItem, departments, currentUser } = useData();
   const [editing, setEditing] = useState<Partial<EventItem> | null>(null);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeItems = allEventItems.filter(e => !e.deleted);
+  const trashedItems = allEventItems.filter(e => e.deleted);
+
+  const getDeptName = (id?: string) => {
+    if (!id) return 'Countywide Event';
+    const d = departments.find(dept => dept.id === id);
+    return d ? d.name : id;
+  };
+
+  const handleStartAdd = () => {
+    const defaultDept = isCommunicationOfficer(currentUser) && currentUser.departmentIds[0] !== '*' 
+      ? currentUser.departmentIds[0] 
+      : undefined;
+
+    setEditing({ departmentId: defaultDept, date: new Date().toISOString().split('T')[0] });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (editing && editing.title && editing.location && editing.date) {
       saveEventItem({
-        id: editing.id || Date.now().toString(),
+        id: editing.id || `event-${Date.now()}`,
         title: editing.title,
         location: editing.location,
         date: editing.date,
@@ -418,106 +865,167 @@ function EventsManager() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Events</h2>
-        <button onClick={() => setEditing({})} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-          <Plus className="w-4 h-4 mr-2" /> Add Event
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">County Events & Assemblies</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Publish upcoming townhalls, public participation forums, and summits.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={handleStartAdd} className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Publish New Event
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button onClick={() => setViewTab('active')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}>
+          Active Events ({activeItems.length})
+        </button>
+        <button onClick={() => setViewTab('trash')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}>
+          <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash Bin ({trashedItems.length})
         </button>
       </div>
 
       {editing !== null && (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">{editing.id ? 'Edit' : 'Add'} Event</h3>
-            <button type="button" onClick={() => setEditing(null)}><X className="w-5 h-5 text-gray-500" /></button>
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4 text-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{editing.id ? 'Edit' : 'Create'} Event</h3>
+            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block font-bold text-gray-700 mb-1">Event Title *</label>
+              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-green-500" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                <input required value={editing.location || ''} onChange={e => setEditing({...editing, location: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+                <label className="block font-bold text-gray-700 mb-1">Venue Location *</label>
+                <input required value={editing.location || ''} onChange={e => setEditing({...editing, location: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none" placeholder="e.g. Mwatate Sub-County Hall" />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" required value={editing.date || ''} onChange={e => setEditing({...editing, date: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+                <label className="block font-bold text-gray-700 mb-1">Event Date *</label>
+                <input type="date" required value={editing.date || ''} onChange={e => setEditing({...editing, date: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none" />
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Department (Optional)</label>
-              <select value={editing.departmentId || ''} onChange={e => setEditing({...editing, departmentId: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2">
-                <option value="">None (General)</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Main Image (Upload)</label>
-              <input type="file" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    setEditing({...editing, mainImage: reader.result as string});
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              {editing.mainImage && <img src={editing.mainImage} alt="Preview" className="mt-2 h-20 w-32 object-cover rounded shadow-sm" />}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Gallery Images (Upload multiple)</label>
-              <input type="file" accept="image/*" multiple onChange={e => {
-                const files = Array.from(e.target.files || []) as File[];
-                const promises = files.map((file: File) => {
-                  return new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.readAsDataURL(file);
-                  });
-                });
-                Promise.all(promises).then(results => {
-                  setEditing({...editing, gallery: [...(editing.gallery || []), ...results]});
-                });
-              }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              {editing.gallery && editing.gallery.length > 0 && (
-                <div className="flex gap-2 mt-2 overflow-x-auto py-2">
-                  {editing.gallery.map((img, i) => (
-                    <div key={i} className="relative shrink-0">
-                      <img src={img} alt={`Gallery ${i}`} className="h-16 w-16 object-cover rounded shadow-sm" />
-                      <button type="button" onClick={() => setEditing({...editing, gallery: editing.gallery?.filter((_, index) => index !== i)})} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow"><X className="w-3 h-3" /></button>
-                    </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Assigned Department</label>
+                <select value={editing.departmentId || ''} onChange={e => setEditing({...editing, departmentId: e.target.value || undefined})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-semibold outline-none">
+                  <option value="">Countywide / General</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id} disabled={!canUserAccessDepartment(currentUser, d.id)}>{d.name}</option>
                   ))}
-                </div>
-              )}
+                </select>
+              </div>
             </div>
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">Save</button>
+
+            <div className="space-y-2">
+              <label className="block font-bold text-gray-700">Event Poster / Cover Photo</label>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <input type="file" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    compressAndReadImage(file).then(dataUrl => setEditing({...editing, mainImage: dataUrl}));
+                  }
+                }} className="flex-1 border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white" />
+                {editing.mainImage && (
+                  <div className="relative">
+                    <img src={editing.mainImage} alt="Cover" className="h-16 w-28 object-cover rounded-xl shadow-xs border" />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({...editing, mainImage: ''})}
+                      className="absolute -top-2 -right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-xs"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <GalleryUploader
+              gallery={editing.gallery || []}
+              onChange={g => setEditing({...editing, gallery: g})}
+              compressAndReadImage={compressAndReadImage}
+              label="Event Photo Gallery Pictures"
+            />
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+              <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl font-bold">Save Event</button>
+            </div>
           </div>
         </form>
       )}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-3 text-left">Event Title</th>
+              <th className="px-6 py-3 text-left">Venue Location</th>
+              <th className="px-6 py-3 text-left">Department & Date</th>
+              {viewTab === 'trash' && <th className="px-6 py-3 text-left">Deleted By / Date</th>}
+              <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {eventItems.map(item => (
-              <tr key={item.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-xs">{item.title}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.date}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => setEditing(item)} className="text-blue-600 hover:text-blue-900 mr-4"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => { if(safeConfirm('Are you sure?')) deleteEventItem(item.id); }} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
+          <tbody className="divide-y divide-gray-100">
+            {(viewTab === 'active' ? activeItems : trashedItems).map(item => {
+              const canAccess = canUserAccessDepartment(currentUser, item.departmentId);
+
+              return (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-bold text-gray-900 max-w-xs truncate">{item.title}</td>
+                  <td className="px-6 py-4 text-gray-600">{item.location}</td>
+                  <td className="px-6 py-4">
+                    <span className="font-semibold block">{getDeptName(item.departmentId)}</span>
+                    <span className="text-[10px] text-gray-400">{item.date}</span>
+                  </td>
+
+                  {viewTab === 'trash' && (
+                    <td className="px-6 py-4 text-gray-500 text-[11px]">
+                      <span>{item.deletedBy || 'System'}</span>
+                      <span className="block text-[10px] text-gray-400">{item.deletedAt}</span>
+                    </td>
+                  )}
+
+                  <td className="px-6 py-4 text-right">
+                    {viewTab === 'active' ? (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button disabled={!canAccess} onClick={() => setEditing(item)} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button disabled={!canAccess} onClick={() => { if (safeConfirm(`Soft delete event "${item.title}"?`)) deleteEventItem(item.id); }} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button onClick={() => restoreEventItem(item.id)} className="px-2.5 py-1 bg-green-50 text-green-800 rounded-lg font-bold text-[11px] flex items-center">
+                          <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                        </button>
+                        {isSuperAdmin(currentUser) && (
+                          <button onClick={() => { if (safeConfirm(`Permanently delete "${item.title}"?`)) hardDeleteEventItem(item.id); }} className="px-2 py-1 bg-red-600 text-white rounded-lg font-bold text-[11px]">
+                            Hard Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {(viewTab === 'active' ? activeItems : trashedItems).length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">
+                  {viewTab === 'active' ? 'No events scheduled.' : 'Trash bin is empty.'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -525,19 +1033,33 @@ function EventsManager() {
   );
 }
 
+/* =========================================================================
+   DOCUMENTS MANAGER (Active & Soft Delete Trash Bin + Department Scoped)
+   ========================================================================= */
 function DocumentsManager() {
-  const { documents, saveDocument, deleteDocument } = useData();
+  const { allDocuments, saveDocument, deleteDocument, restoreDocument, hardDeleteDocument, departments, currentUser } = useData();
   const [editing, setEditing] = useState<Partial<Document> | null>(null);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeItems = allDocuments.filter(d => !d.deleted);
+  const trashedItems = allDocuments.filter(d => d.deleted);
+
+  const getDeptName = (id?: string) => {
+    if (!id) return 'General County';
+    const d = departments.find(dept => dept.id === id);
+    return d ? d.name : id;
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (editing && editing.title && editing.type && editing.size) {
       saveDocument({
-        id: editing.id || Date.now().toString(),
+        id: editing.id || `doc-${Date.now()}`,
         title: editing.title,
         type: editing.type as any,
         size: editing.size,
         datePosted: editing.datePosted || new Date().toISOString().split('T')[0],
+        departmentId: editing.departmentId || undefined,
         fileData: editing.fileData
       });
       setEditing(null);
@@ -545,166 +1067,626 @@ function DocumentsManager() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Documents</h2>
-        <button onClick={() => setEditing({ type: 'Policy', size: '1 MB' })} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-          <Plus className="w-4 h-4 mr-2" /> Add Document
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Official Publications & Documents</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Upload policy bills, gazettes, budgets, and public reports.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={() => setEditing({ type: 'Policy', size: '1.5 MB', datePosted: new Date().toISOString().split('T')[0] })} className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Upload Document
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button onClick={() => setViewTab('active')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}>
+          Active Documents ({activeItems.length})
+        </button>
+        <button onClick={() => setViewTab('trash')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}>
+          <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash Bin ({trashedItems.length})
         </button>
       </div>
 
       {editing !== null && (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">{editing.id ? 'Edit' : 'Add'} Document</h3>
-            <button type="button" onClick={() => setEditing(null)}><X className="w-5 h-5 text-gray-500" /></button>
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4 text-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{editing.id ? 'Edit' : 'Upload'} Document</h3>
+            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block font-bold text-gray-700 mb-1">Document Title *</label>
+              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-green-500" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select value={editing.type || 'Policy'} onChange={e => setEditing({...editing, type: e.target.value as any})} className="w-full border border-gray-300 rounded px-3 py-2">
-                  <option value="Policy">Policy</option>
-                  <option value="Budget">Budget</option>
-                  <option value="Tender">Tender</option>
-                  <option value="Report">Report</option>
+                <label className="block font-bold text-gray-700 mb-1">Classification Type *</label>
+                <select value={editing.type || 'Policy'} onChange={e => setEditing({...editing, type: e.target.value as any})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-semibold outline-none">
+                  <option value="Policy">Policy Document</option>
+                  <option value="Budget">County Budget & Financial</option>
+                  <option value="Tender">Tender & Procurement</option>
+                  <option value="Report">Report & Audit</option>
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">File Upload (Generates size)</label>
-                <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={e => {
+                <label className="block font-bold text-gray-700 mb-1">Assigned Department</label>
+                <select value={editing.departmentId || ''} onChange={e => setEditing({...editing, departmentId: e.target.value || undefined})} className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white font-semibold outline-none">
+                  <option value="">General County Administration</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id} disabled={!canUserAccessDepartment(currentUser, d.id)}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">File Upload (PDF / DOC)</label>
+                <input type="file" accept=".pdf,.doc,.docx" onChange={e => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const sizeInMB = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
                     const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setEditing({...editing, fileData: reader.result as string, size: sizeInMB});
-                    };
+                    reader.onloadend = () => setEditing({...editing, fileData: reader.result as string, size: sizeMB});
                     reader.readAsDataURL(file);
                   }
-                }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+                }} className="w-full border border-gray-300 rounded-xl px-3 py-1.5 text-xs bg-white" />
               </div>
             </div>
-            {editing.size && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
-                <input required value={editing.size || ''} onChange={e => setEditing({...editing, size: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2 bg-gray-100" />
-              </div>
-            )}
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">Save</button>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+              <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl font-bold">Save Document</button>
+            </div>
           </div>
         </form>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-3 text-left">Document Title</th>
+              <th className="px-6 py-3 text-left">Classification</th>
+              <th className="px-6 py-3 text-left">Department</th>
+              {viewTab === 'trash' && <th className="px-6 py-3 text-left">Deleted By / Date</th>}
+              <th className="px-6 py-3 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {documents.map(item => (
-              <tr key={item.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate max-w-xs">{item.title}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.type}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => setEditing(item)} className="text-blue-600 hover:text-blue-900 mr-4"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => { if(safeConfirm('Are you sure?')) deleteDocument(item.id); }} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
+          <tbody className="divide-y divide-gray-100">
+            {(viewTab === 'active' ? activeItems : trashedItems).map(item => {
+              const canAccess = canUserAccessDepartment(currentUser, item.departmentId);
+
+              return (
+                <tr key={item.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-bold text-gray-900 max-w-xs truncate">{item.title}</td>
+                  <td className="px-6 py-4 font-medium text-gray-600">{item.type} ({item.size})</td>
+                  <td className="px-6 py-4 font-semibold text-emerald-800">{getDeptName(item.departmentId)}</td>
+
+                  {viewTab === 'trash' && (
+                    <td className="px-6 py-4 text-gray-500 text-[11px]">
+                      <span>{item.deletedBy || 'System'}</span>
+                      <span className="block text-[10px] text-gray-400">{item.deletedAt}</span>
+                    </td>
+                  )}
+
+                  <td className="px-6 py-4 text-right">
+                    {viewTab === 'active' ? (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button disabled={!canAccess} onClick={() => setEditing(item)} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button disabled={!canAccess} onClick={() => { if (safeConfirm(`Soft delete document "${item.title}"?`)) deleteDocument(item.id); }} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button onClick={() => restoreDocument(item.id)} className="px-2.5 py-1 bg-green-50 text-green-800 rounded-lg font-bold text-[11px] flex items-center">
+                          <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                        </button>
+                        {isSuperAdmin(currentUser) && (
+                          <button onClick={() => { if (safeConfirm(`Permanently delete "${item.title}"?`)) hardDeleteDocument(item.id); }} className="px-2 py-1 bg-red-600 text-white rounded-lg font-bold text-[11px]">
+                            Hard Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {(viewTab === 'active' ? activeItems : trashedItems).length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">
+                  {viewTab === 'active' ? 'No documents published.' : 'Trash bin is empty.'}
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
     </div>
   );
 }
-function GovernorMessageManager() {
-  const { governorMessage, saveGovernorMessage } = useData();
-  const [editing, setEditing] = useState<Partial<GovernorMessage> | null>(null);
+
+/* =========================================================================
+   VACANCIES MANAGER (Active & Soft Delete Trash Bin + Department Scoped)
+   ========================================================================= */
+function VacanciesManager() {
+  const { allVacancies, saveVacancy, deleteVacancy, restoreVacancy, hardDeleteVacancy, departments, currentUser } = useData();
+  const [editingVacancy, setEditingVacancy] = useState<Vacancy | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeVacancies = allVacancies.filter(v => !v.deleted);
+  const trashedVacancies = allVacancies.filter(v => v.deleted);
+
+  const emptyVacancy: Vacancy = {
+    id: `vac-${Date.now()}`,
+    title: '',
+    departmentId: isCommunicationOfficer(currentUser) && currentUser.departmentIds[0] !== '*' ? currentUser.departmentIds[0] : (departments[0]?.id || ''),
+    deadline: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+    type: 'Full-time',
+    description: '',
+    requirements: [],
+    positionsCount: 1,
+    fileData: '',
+    fileSize: '1.2 MB',
+    viewsCount: 0,
+    downloadsCount: 0,
+    datePosted: new Date().toISOString().split('T')[0]
+  };
+
+  const handleCreateNew = () => {
+    setEditingVacancy(emptyVacancy);
+    setIsCreating(true);
+  };
+
+  const handleEdit = (vac: Vacancy) => {
+    setEditingVacancy({ ...vac });
+    setIsCreating(false);
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editing && editing.name && editing.title && editing.message && editing.imageUrl) {
-      saveGovernorMessage({
-        id: 'gov-msg',
+    if (!editingVacancy) return;
+    saveVacancy(editingVacancy);
+    setEditingVacancy(null);
+    setIsCreating(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Careers & Public Job Vacancies</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Publish job postings, application deadlines, PDFs, and view application click metrics.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={handleCreateNew} className="flex items-center px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Post New Job Vacancy
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button onClick={() => setViewTab('active')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-emerald-800 shadow-xs' : 'text-gray-600'}`}>
+          Active Vacancies ({activeVacancies.length})
+        </button>
+        <button onClick={() => setViewTab('trash')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}>
+          <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash Bin ({trashedVacancies.length})
+        </button>
+      </div>
+
+      {editingVacancy && (
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4 text-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{isCreating ? 'Post New Job Vacancy' : 'Edit Job Vacancy'}</h3>
+            <button type="button" onClick={() => setEditingVacancy(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Job Designation Title *</label>
+              <input required value={editingVacancy.title} onChange={e => setEditingVacancy({...editingVacancy, title: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g. Senior Medical Officer" />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Department *</label>
+              <select value={editingVacancy.departmentId} onChange={e => setEditingVacancy({...editingVacancy, departmentId: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white font-semibold outline-none">
+                {departments.map(d => (
+                  <option key={d.id} value={d.id} disabled={!canUserAccessDepartment(currentUser, d.id)}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Employment Type</label>
+              <select value={editingVacancy.type} onChange={e => setEditingVacancy({...editingVacancy, type: e.target.value as any})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none font-semibold">
+                <option value="Full-time">Full-time</option>
+                <option value="Contract">Contract</option>
+                <option value="Internship">Internship</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Temporary">Temporary</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Application Deadline Date *</label>
+              <input type="date" required value={editingVacancy.deadline} onChange={e => setEditingVacancy({...editingVacancy, deadline: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none font-bold text-emerald-800" />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Number of Positions</label>
+              <input type="number" min={1} value={editingVacancy.positionsCount || 1} onChange={e => setEditingVacancy({...editingVacancy, positionsCount: parseInt(e.target.value) || 1})} className="w-full border rounded-xl px-3 py-2 bg-white font-bold outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Vacancy Description Overview</label>
+            <textarea rows={2} value={editingVacancy.description || ''} onChange={e => setEditingVacancy({...editingVacancy, description: e.target.value})} className="w-full border rounded-xl p-2.5 bg-white outline-none" placeholder="Key summary of the role..." />
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">PDF Advertisement File Upload</label>
+            <input type="file" accept=".pdf" onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => setEditingVacancy({...editingVacancy, fileData: reader.result as string, fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB'});
+                reader.readAsDataURL(file);
+              }
+            }} className="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" />
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <button type="button" onClick={() => setEditingVacancy(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+            <button type="submit" className="px-4 py-1.5 bg-emerald-700 text-white rounded-xl font-bold">Save Job Posting</button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
+        <table className="min-w-full divide-y divide-gray-200 text-xs">
+          <thead className="bg-gray-50 text-[11px] font-bold text-gray-500 uppercase">
+            <tr>
+              <th className="px-6 py-3 text-left">Vacancy Title</th>
+              <th className="px-6 py-3 text-left">Department</th>
+              <th className="px-6 py-3 text-left">Deadline & Views</th>
+              {viewTab === 'trash' && <th className="px-6 py-3 text-left">Deleted By / Date</th>}
+              <th className="px-6 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(viewTab === 'active' ? activeVacancies : trashedVacancies).map(vac => {
+              const canAccess = canUserAccessDepartment(currentUser, vac.departmentId);
+              const dept = departments.find(d => d.id === vac.departmentId);
+
+              return (
+                <tr key={vac.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-bold text-gray-900 max-w-xs truncate">{vac.title}</td>
+                  <td className="px-6 py-4 font-semibold text-emerald-800">{dept?.name || vac.departmentId}</td>
+                  <td className="px-6 py-4">
+                    <span className="font-bold text-gray-800 block">Deadline: {vac.deadline}</span>
+                    <span className="text-[10px] text-gray-400">👀 {vac.viewsCount || 0} Views • 📥 {vac.downloadsCount || 0} Downloads</span>
+                  </td>
+
+                  {viewTab === 'trash' && (
+                    <td className="px-6 py-4 text-gray-500 text-[11px]">
+                      <span>{vac.deletedBy || 'System'}</span>
+                      <span className="block text-[10px] text-gray-400">{vac.deletedAt}</span>
+                    </td>
+                  )}
+
+                  <td className="px-6 py-4 text-right">
+                    {viewTab === 'active' ? (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button disabled={!canAccess} onClick={() => handleEdit(vac)} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button disabled={!canAccess} onClick={() => { if (safeConfirm(`Soft delete vacancy "${vac.title}"?`)) deleteVacancy(vac.id); }} className={`p-1.5 rounded-lg font-bold text-xs ${canAccess ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end space-x-2">
+                        <button onClick={() => restoreVacancy(vac.id)} className="px-2.5 py-1 bg-green-50 text-green-800 rounded-lg font-bold text-[11px] flex items-center">
+                          <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                        </button>
+                        {isSuperAdmin(currentUser) && (
+                          <button onClick={() => { if (safeConfirm(`Permanently delete vacancy "${vac.title}"?`)) hardDeleteVacancy(vac.id); }} className="px-2 py-1 bg-red-600 text-white rounded-lg font-bold text-[11px]">
+                            Hard Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {(viewTab === 'active' ? activeVacancies : trashedVacancies).length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-gray-400">
+                  {viewTab === 'active' ? 'No vacancies posted.' : 'Trash bin is empty.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   LEADERSHIP MANAGER
+   ========================================================================= */
+function LeadershipManager() {
+  const { allOfficials, saveOfficial, deleteOfficial, restoreOfficial, hardDeleteOfficial, departments, currentUser } = useData();
+  const [editing, setEditing] = useState<Partial<Official> | null>(null);
+  const [filterType, setFilterType] = useState<string>('All');
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeOfficials = allOfficials.filter(o => !o.deleted);
+  const trashedOfficials = allOfficials.filter(o => o.deleted);
+
+  const displayedList = (viewTab === 'active' ? activeOfficials : trashedOfficials).filter(o => {
+    if (filterType === 'All') return true;
+    return o.type === filterType;
+  });
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editing && editing.name && editing.role) {
+      saveOfficial({
+        id: editing.id || `off-${Date.now()}`,
         name: editing.name,
-        title: editing.title,
-        message: editing.message,
-        imageUrl: editing.imageUrl,
+        role: editing.role,
+        type: editing.type || 'CECM',
+        departmentId: editing.departmentId,
+        imagePlaceholder: editing.imagePlaceholder || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80',
+        profile: editing.profile
       });
       setEditing(null);
     }
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Message from the Governor</h2>
-        {editing === null && (
-          <button onClick={() => setEditing(governorMessage)} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-            <Edit2 className="w-4 h-4 mr-2" /> Edit Message
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">County Leadership (CECMs & CCOs)</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Manage CECMs, Chief Officers, and Executive portfolios.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={() => setEditing({ type: 'CECM' })} className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Add New Official
           </button>
         )}
       </div>
 
-      {editing !== null ? (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">Edit Message</h3>
-            <button type="button" onClick={() => setEditing(null)}><X className="w-5 h-5 text-gray-500" /></button>
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button onClick={() => setViewTab('active')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}>
+          Active Officials ({activeOfficials.length})
+        </button>
+        <button onClick={() => setViewTab('trash')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}>
+          <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash Bin ({trashedOfficials.length})
+        </button>
+      </div>
+
+      {editing !== null && (
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4 text-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">{editing.id ? 'Edit' : 'Add'} Official</h3>
+            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
           </div>
-          <div className="space-y-4">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input required value={editing.name || ''} onChange={e => setEditing({...editing, name: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block font-bold text-gray-700 mb-1">Official Name *</label>
+              <input required value={editing.name || ''} onChange={e => setEditing({...editing, name: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" placeholder="e.g. Hon. John Doe" />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <input required value={editing.title || ''} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2" />
+              <label className="block font-bold text-gray-700 mb-1">Role Title *</label>
+              <input required value={editing.role || ''} onChange={e => setEditing({...editing, role: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" placeholder="e.g. CECM - Health Services" />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
-              <textarea required value={editing.message || ''} onChange={e => setEditing({...editing, message: e.target.value})} className="w-full border border-gray-300 rounded px-3 py-2 h-32" />
+              <label className="block font-bold text-gray-700 mb-1">Leadership Type</label>
+              <select value={editing.type || 'CECM'} onChange={e => setEditing({...editing, type: e.target.value as any})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none font-bold">
+                <option value="CECM">CECM (Executive Committee Member)</option>
+                <option value="CCO">CCO (Chief Officer)</option>
+                <option value="Governor">Governor</option>
+                <option value="Deputy Governor">Deputy Governor</option>
+              </select>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Governor Image (Upload)</label>
-              <input type="file" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    setEditing({...editing, imageUrl: reader.result as string});
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              {editing.imageUrl && <img src={editing.imageUrl} alt="Preview" className="mt-2 h-20 w-20 object-cover rounded shadow-sm" />}
+              <label className="block font-bold text-gray-700 mb-1">Assigned Department</label>
+              <select value={editing.departmentId || ''} onChange={e => setEditing({...editing, departmentId: e.target.value || undefined})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none">
+                <option value="">Executive / General</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
             </div>
-            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded">Save</button>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <button type="button" onClick={() => setEditing(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+            <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl font-bold">Save Official</button>
           </div>
         </form>
-      ) : (
-        <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 items-start">
-          <img src={governorMessage.imageUrl} alt={governorMessage.name} className="w-32 h-32 object-cover rounded-lg shadow-sm" />
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">{governorMessage.name}</h3>
-            <p className="text-green-700 font-medium mb-4">{governorMessage.title}</p>
-            <p className="text-gray-700 leading-relaxed">{governorMessage.message}</p>
-          </div>
-        </div>
       )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {displayedList.map(off => {
+          const canAccess = canUserAccessDepartment(currentUser, off.departmentId);
+
+          return (
+            <div key={off.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-2xs flex flex-col justify-between">
+              <div className="flex items-start space-x-3">
+                <img src={off.imagePlaceholder || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80'} alt={off.name} className="w-12 h-12 rounded-xl object-cover border shrink-0" />
+                <div>
+                  <h4 className="font-bold text-sm text-gray-900">{off.name}</h4>
+                  <p className="text-xs text-green-800 font-semibold">{off.role}</p>
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-bold rounded">
+                    {off.type}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end space-x-2">
+                {viewTab === 'active' ? (
+                  <>
+                    <button disabled={!canAccess} onClick={() => setEditing(off)} className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold">Edit</button>
+                    <button disabled={!canAccess} onClick={() => { if (safeConfirm(`Soft delete official "${off.name}"?`)) deleteOfficial(off.id); }} className="px-2.5 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold">Delete</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => restoreOfficial(off.id)} className="px-2.5 py-1 bg-green-50 text-green-800 hover:bg-green-100 rounded-lg text-xs font-bold flex items-center">
+                      <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                    </button>
+                    {isSuperAdmin(currentUser) && (
+                      <button onClick={() => { if (safeConfirm(`Hard delete "${off.name}"?`)) hardDeleteOfficial(off.id); }} className="px-2.5 py-1 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold">Hard Delete</button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
+/* =========================================================================
+   TOURISM MANAGER
+   ========================================================================= */
+function TourismManager() {
+  const { allTouristSites, saveTouristSite, deleteTouristSite, restoreTouristSite, hardDeleteTouristSite, currentUser } = useData();
+  const [editingSite, setEditingSite] = useState<TouristSite | null>(null);
+  const [viewTab, setViewTab] = useState<'active' | 'trash'>('active');
+
+  const activeSites = allTouristSites.filter(t => !t.deleted);
+  const trashedSites = allTouristSites.filter(t => t.deleted);
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingSite && editingSite.name && editingSite.description) {
+      saveTouristSite(editingSite);
+      setEditingSite(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Tourism Destinations</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Manage Tsavo National Park, Lake Jipe, Vuria Hills, and historical sites.</p>
+        </div>
+
+        {canUserAddContent(currentUser) && (
+          <button onClick={() => setEditingSite({ id: `site-${Date.now()}`, name: '', description: '', location: 'Taita Taveta County', imageUrl: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=400&q=80' })} className="flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold shadow-sm">
+            <Plus className="w-4 h-4 mr-1.5" /> Add Tourist Site
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded-xl border border-gray-200 w-fit">
+        <button onClick={() => setViewTab('active')} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${viewTab === 'active' ? 'bg-white text-green-800 shadow-xs' : 'text-gray-600'}`}>
+          Active Destinations ({activeSites.length})
+        </button>
+        <button onClick={() => setViewTab('trash')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center ${viewTab === 'trash' ? 'bg-red-50 text-red-700 shadow-xs' : 'text-gray-500'}`}>
+          <Trash2 className="w-3.5 h-3.5 mr-1" /> Trash Bin ({trashedSites.length})
+        </button>
+      </div>
+
+      {editingSite && (
+        <form onSubmit={handleSave} className="bg-gray-50 p-5 rounded-2xl border border-gray-200 space-y-4 text-xs">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-900 text-sm">Edit Destination</h3>
+            <button type="button" onClick={() => setEditingSite(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Destination Name *</label>
+              <input required value={editingSite.name} onChange={e => setEditingSite({...editingSite, name: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-700 mb-1">Location Sub-County</label>
+              <input required value={editingSite.location} onChange={e => setEditingSite({...editingSite, location: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Description *</label>
+            <textarea rows={3} required value={editingSite.description} onChange={e => setEditingSite({...editingSite, description: e.target.value})} className="w-full border rounded-xl p-2.5 bg-white outline-none" />
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <button type="button" onClick={() => setEditingSite(null)} className="px-3 py-1.5 border rounded-xl font-bold">Cancel</button>
+            <button type="submit" className="px-4 py-1.5 bg-green-700 text-white rounded-xl font-bold">Save Destination</button>
+          </div>
+        </form>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {(viewTab === 'active' ? activeSites : trashedSites).map(site => (
+          <div key={site.id} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-2xs flex flex-col justify-between">
+            <div className="flex items-start space-x-3">
+              <img src={site.imageUrl || 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=400&q=80'} alt={site.name} className="w-20 h-20 rounded-xl object-cover border shrink-0" />
+              <div>
+                <h4 className="font-bold text-sm text-gray-900">{site.name}</h4>
+                <p className="text-xs text-green-800 font-semibold">{site.location}</p>
+                <p className="text-xs text-gray-500 line-clamp-2 mt-1">{site.description}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end space-x-2">
+              {viewTab === 'active' ? (
+                <>
+                  <button onClick={() => setEditingSite(site)} className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold">Edit</button>
+                  <button onClick={() => { if (safeConfirm(`Soft delete destination "${site.name}"?`)) deleteTouristSite(site.id); }} className="px-2.5 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold">Delete</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => restoreTouristSite(site.id)} className="px-2.5 py-1 bg-green-50 text-green-800 hover:bg-green-100 rounded-lg text-xs font-bold flex items-center">
+                    <RotateCcw className="w-3 h-3 mr-1" /> Restore
+                  </button>
+                  {isSuperAdmin(currentUser) && (
+                    <button onClick={() => { if (safeConfirm(`Hard delete "${site.name}"?`)) hardDeleteTouristSite(site.id); }} className="px-2.5 py-1 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold">Hard Delete</button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   GLOBAL SETTINGS MANAGERS (EMERGENCY ALERTS, SLIDESHOW, LOGO, GOVERNOR)
+   ========================================================================= */
 function EmergencyAlertManager() {
   const { emergencyAlert, saveEmergencyAlert } = useData();
   const [formData, setFormData] = useState<EmergencyAlert>(emergencyAlert);
@@ -726,18 +1708,15 @@ function EmergencyAlertManager() {
   };
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-200">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <ShieldAlert className="w-6 h-6 text-red-600" /> Emergency Alert Banner Configuration
+          <h2 className="text-xl font-bold text-gray-900 flex items-center">
+            <ShieldAlert className="w-6 h-6 mr-2 text-red-600" /> Emergency Alert Banner Configuration
           </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Broadcast urgent safety advisories, weather warnings, or public health notices live across all site pages.
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Broadcast live safety advisories and emergency public notices across all portal pages.</p>
         </div>
 
-        {/* Live Status Switch */}
         <div className="flex items-center space-x-3 bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 shrink-0">
           <span className="text-xs font-bold text-gray-700">Banner Status:</span>
           <button
@@ -747,69 +1726,29 @@ function EmergencyAlertManager() {
               formData.enabled ? 'bg-red-600' : 'bg-gray-300'
             }`}
           >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                formData.enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
+            <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
-          <span className={`text-xs font-bold ${formData.enabled ? 'text-red-600' : 'text-gray-400'}`}>
-            {formData.enabled ? 'LIVE ON SITE' : 'OFF'}
+          <span className={`text-xs font-black uppercase ${formData.enabled ? 'text-red-600' : 'text-gray-400'}`}>
+            {formData.enabled ? 'LIVE ACTIVE' : 'OFF'}
           </span>
         </div>
       </div>
 
       {savedSuccess && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl text-green-800 text-xs font-bold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-green-600" /> Alert configuration updated successfully!
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center">
+          <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+          Emergency Alert settings updated successfully!
         </div>
       )}
 
-      {/* Live Preview Card */}
-      <div className="mb-8">
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Live Preview:</label>
-        <div
-          className={`p-4 rounded-xl border text-white shadow-sm transition-colors ${
-            formData.enabled
-              ? formData.type === 'danger'
-                ? 'bg-gradient-to-r from-red-700 to-rose-700 border-red-800'
-                : formData.type === 'warning'
-                ? 'bg-gradient-to-r from-amber-600 to-yellow-600 border-amber-700'
-                : 'bg-gradient-to-r from-blue-700 to-indigo-700 border-blue-800'
-              : 'bg-gray-100 text-gray-400 border-gray-300'
-          }`}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center space-x-3">
-              <div className="p-1.5 bg-white/20 rounded-lg">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-black/20 text-white">
-                  {formData.type.toUpperCase()} ALERT
-                </span>
-                <h4 className="font-bold text-sm leading-snug">{formData.title || 'Untitled Emergency'}</h4>
-                <p className="text-xs opacity-90 mt-0.5">{formData.message || 'No alert description provided.'}</p>
-              </div>
-            </div>
-            {formData.linkText && (
-              <span className="px-3 py-1 bg-white text-gray-900 rounded font-bold text-xs shrink-0">
-                {formData.linkText}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Form */}
-      <form onSubmit={handleSubmit} className="space-y-5 bg-gray-50 p-6 rounded-2xl border border-gray-200">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Alert Severity Level</label>
+            <label className="block font-bold text-gray-700 mb-1">Alert Severity Level</label>
             <select
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-red-500 outline-none"
+              onChange={e => setFormData({ ...formData, type: e.target.value as any })}
+              className="w-full border rounded-xl px-3 py-2 bg-white font-bold outline-none"
             >
               <option value="danger">Danger / Critical (Red)</option>
               <option value="warning">Warning / Advisory (Amber)</option>
@@ -818,68 +1757,33 @@ function EmergencyAlertManager() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Banner Title</label>
+            <label className="block font-bold text-gray-700 mb-1">Banner Title *</label>
             <input
               type="text"
               required
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-red-500 outline-none"
+              onChange={e => setFormData({ ...formData, title: e.target.value })}
+              className="w-full border rounded-xl px-3 py-2 bg-white outline-none"
               placeholder="e.g. HEAVY RAINFALL ADVISORY"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-700 mb-1">Alert Description / Instructions</label>
+          <label className="block font-bold text-gray-700 mb-1">Alert Message *</label>
           <textarea
             required
             rows={3}
             value={formData.message}
-            onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-red-500 outline-none"
-            placeholder="Detailed alert instructions or emergency phone contacts..."
-          ></textarea>
+            onChange={e => setFormData({ ...formData, message: e.target.value })}
+            className="w-full border rounded-xl p-2.5 bg-white outline-none"
+            placeholder="Detailed alert message..."
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Action Link URL (Optional)</label>
-            <input
-              type="text"
-              value={formData.linkUrl || ''}
-              onChange={(e) => setFormData({ ...formData, linkUrl: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-red-500 outline-none"
-              placeholder="/news or https://disaster.taitataveta.go.ke"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Button Label (Optional)</label>
-            <input
-              type="text"
-              value={formData.linkText || ''}
-              onChange={(e) => setFormData({ ...formData, linkText: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-red-500 outline-none"
-              placeholder="e.g. View Safety Instructions"
-            />
-          </div>
-        </div>
-
-        <div className="pt-2 flex items-center justify-between">
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
-          >
+        <div className="flex justify-end pt-2">
+          <button type="submit" className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-xs">
             Save Alert Configuration
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleToggle(false)}
-            className="px-4 py-2.5 text-gray-600 hover:text-gray-900 font-bold text-xs"
-          >
-            Turn Off Alert Banner
           </button>
         </div>
       </form>
@@ -893,1415 +1797,228 @@ function SlideshowManager() {
     welcomeTag: heroContent?.welcomeTag || 'Datoni ya Rika • Welcome to Taita Taveta',
     title: heroContent?.title || 'The Land of Endless Potential & Rich Heritage',
     titleColor: heroContent?.titleColor || 'text-white',
-    subtitle: heroContent?.subtitle || 'Official portal for the County Government of Taita Taveta. Access public services, discover investment opportunities, and explore our majestic tourist destinations.',
+    subtitle: heroContent?.subtitle || 'Official portal for the County Government of Taita Taveta.',
     slides: heroContent?.slides || [
       'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1600&q=80',
-      'https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=1600&q=80',
-      'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1600&q=80'
-    ],
-    actionButtons: heroContent?.actionButtons || [
-      { id: 'btn_1', label: 'Our Government', url: '/about', color: 'green' },
-      { id: 'btn_2', label: 'Explore Tourism', url: '/tourism', color: 'orange' }
+      'https://images.unsplash.com/photo-1437622368342-7a3d73a34c8f?w=1600&q=80'
     ]
   });
-  const [newSlideUrl, setNewSlideUrl] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setUploadError(null);
-
-    try {
-      const compressedDataUrl = await compressAndReadImage(file, 1600, 1000, 0.75);
-      setFormData(prev => ({
-        ...prev,
-        slides: [...prev.slides, compressedDataUrl]
-      }));
-    } catch (err: any) {
-      console.error("Slideshow image upload error:", err);
-      setUploadError(err?.message || "Failed to process image file. Please try another image.");
-    } finally {
-      setIsUploading(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleAddSlideUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newSlideUrl.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        slides: [...prev.slides, newSlideUrl.trim()]
-      }));
-      setNewSlideUrl('');
-    }
-  };
-
-  const handleRemoveSlide = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      slides: prev.slides.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleAddButton = () => {
-    const newBtn = {
-      id: `btn_${Date.now()}`,
-      label: 'New Action',
-      url: '/about',
-      color: (formData.actionButtons && formData.actionButtons.length % 2 === 1 ? 'orange' : 'green') as 'green' | 'orange' | 'gold' | 'dark' | 'white'
-    };
-    setFormData(prev => ({
-      ...prev,
-      actionButtons: [...(prev.actionButtons || []), newBtn]
-    }));
-  };
-
-  const handleUpdateButton = (id: string, updatedFields: Partial<NonNullable<HeroContent['actionButtons']>[0]>) => {
-    setFormData(prev => ({
-      ...prev,
-      actionButtons: (prev.actionButtons || []).map(b => b.id === id ? { ...b, ...updatedFields } : b)
-    }));
-  };
-
-  const handleRemoveButton = (id: string) => {
-    setFormData(prev => ({
-      ...prev,
-      actionButtons: (prev.actionButtons || []).filter(b => b.id !== id)
-    }));
-  };
-
-  const handleMoveButton = (index: number, direction: 'up' | 'down') => {
-    const buttons = [...(formData.actionButtons || [])];
-    const targetIdx = direction === 'up' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= buttons.length) return;
-    const temp = buttons[index];
-    buttons[index] = buttons[targetIdx];
-    buttons[targetIdx] = temp;
-    setFormData(prev => ({ ...prev, actionButtons: buttons }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveHeroContent(formData);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Homepage Slideshow & Hero Message</h2>
-          <p className="text-sm text-gray-500">Customize background slideshow images and hero message text.</p>
-        </div>
-        {saveSuccess && (
-          <div className="flex items-center text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 text-sm font-medium">
-            <CheckCircle2 className="w-4 h-4 mr-1.5" /> Saved successfully!
-          </div>
-        )}
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Hero Messaging & Title Color */}
-        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-5">
-          <h3 className="font-bold text-gray-900 text-base flex items-center">
-            <FileText className="w-5 h-5 mr-2 text-green-700" /> Hero Headline & Text Settings
-          </h3>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Welcome Tagline / Badge</label>
-              <input
-                type="text"
-                required
-                value={formData.welcomeTag}
-                onChange={e => setFormData({ ...formData, welcomeTag: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="e.g. Datoni ya Rika • Welcome to Taita Taveta"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Main Hero Title Headline</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={formData.title}
-                  onChange={e => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                  placeholder="e.g. The Land of Endless Potential & Rich Heritage"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Title Text Color</label>
-                <select
-                  value={formData.titleColor || 'text-white'}
-                  onChange={e => setFormData({ ...formData, titleColor: e.target.value as any })}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none font-bold"
-                >
-                  <option value="text-white">⚪ Crisp White</option>
-                  <option value="text-orange-400">🟧 Official County Orange</option>
-                  <option value="text-amber-300">🟨 County Gold / Yellow</option>
-                  <option value="text-green-400">🟩 Official County Green</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Subtitle Description</label>
-              <textarea
-                required
-                rows={2}
-                value={formData.subtitle}
-                onChange={e => setFormData({ ...formData, subtitle: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="Brief portal statement..."
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Hero Action Buttons Manager */}
-        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-3">
-            <div>
-              <h3 className="font-bold text-gray-900 text-base flex items-center">
-                <Settings className="w-5 h-5 mr-2 text-orange-600" /> Hero Call-to-Action Buttons ({formData.actionButtons?.length || 0})
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">Customize button labels, destination links, and interchange between official green and orange themes.</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleAddButton}
-              className="inline-flex items-center px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Add Button
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {(formData.actionButtons || []).map((btn, index) => (
-              <div key={btn.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center gap-3">
-                <div className="flex items-center space-x-2 text-xs font-bold text-gray-400">
-                  <span>#{index + 1}</span>
-                  <div className="flex flex-col">
-                    <button
-                      type="button"
-                      disabled={index === 0}
-                      onClick={() => handleMoveButton(index, 'up')}
-                      className="hover:text-gray-900 disabled:opacity-20"
-                      title="Move Up"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      disabled={index === (formData.actionButtons?.length || 0) - 1}
-                      onClick={() => handleMoveButton(index, 'down')}
-                      className="hover:text-gray-900 disabled:opacity-20"
-                      title="Move Down"
-                    >
-                      ▼
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Button Text</label>
-                    <input
-                      type="text"
-                      required
-                      value={btn.label}
-                      onChange={e => handleUpdateButton(btn.id, { label: e.target.value })}
-                      placeholder="e.g. Our Government"
-                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Target Link / URL</label>
-                    <input
-                      type="text"
-                      required
-                      value={btn.url}
-                      onChange={e => handleUpdateButton(btn.id, { url: e.target.value })}
-                      placeholder="e.g. /about or /tourism"
-                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Button Theme Color</label>
-                    <select
-                      value={btn.color}
-                      onChange={e => handleUpdateButton(btn.id, { color: e.target.value as any })}
-                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none font-bold"
-                    >
-                      <option value="green">🟩 Official Green</option>
-                      <option value="orange">🟧 Official Orange</option>
-                      <option value="gold">🟨 County Gold</option>
-                      <option value="dark">⬛ Charcoal / Dark</option>
-                      <option value="white">⬜ White / Glass</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveButton(btn.id)}
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete Button"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {(!formData.actionButtons || formData.actionButtons.length === 0) && (
-              <div className="p-4 text-center text-xs text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-                No custom buttons configured. Click "Add Button" to create hero action buttons.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Slideshow Images */}
-        <div className="bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="font-bold text-gray-900 text-base flex items-center">
-              <Image className="w-5 h-5 mr-2 text-green-700" /> Slideshow Images ({formData.slides.length})
-            </h3>
-            
-            <label className={`cursor-pointer inline-flex items-center px-4 py-2 ${
-              isUploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800'
-            } text-white rounded-xl text-xs font-bold transition-colors shadow-sm shrink-0`}>
-              <Upload className={`w-4 h-4 mr-2 ${isUploading ? 'animate-spin' : ''}`} />
-              {isUploading ? 'Compressing & Adding...' : 'Upload Image File'}
-              <input 
-                type="file" 
-                accept="image/*" 
-                onChange={handleFileUpload} 
-                disabled={isUploading} 
-                className="hidden" 
-              />
-            </label>
-          </div>
-
-          {uploadError && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 flex items-center justify-between">
-              <span>{uploadError}</span>
-              <button type="button" onClick={() => setUploadError(null)} className="text-red-500 hover:text-red-700 ml-2 font-bold">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newSlideUrl}
-              onChange={e => setNewSlideUrl(e.target.value)}
-              placeholder="Or paste image URL (https://...)"
-              className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-            />
-            <button
-              type="button"
-              onClick={handleAddSlideUrl}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-900 text-white font-bold text-xs rounded-xl"
-            >
-              Add Slide URL
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {formData.slides.map((slideUrl, index) => (
-              <div key={index} className="relative group bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-                <img src={slideUrl} alt={`Slide ${index + 1}`} className="w-full h-40 object-cover" />
-                <div className="p-3 flex items-center justify-between bg-white">
-                  <span className="text-xs font-semibold text-gray-700">Slide #{index + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSlide(index)}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Remove Slide"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          className="px-6 py-3 bg-green-700 hover:bg-green-800 text-white font-bold text-sm rounded-xl shadow-md transition-all"
-        >
-          Save Slideshow & Hero Content
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function LeadershipManager() {
-  const { officials, departments, saveOfficial, deleteOfficial } = useData();
-  const [filterType, setFilterType] = useState<string>('All');
-  const [editing, setEditing] = useState<Partial<Official> | null>(null);
-
-  const filteredOfficials = officials.filter(o => {
-    if (filterType === 'All') return true;
-    return o.type === filterType;
-  });
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && editing) {
-      try {
-        const compressedDataUrl = await compressAndReadImage(file, 800, 800, 0.75);
-        setEditing(prev => prev ? ({ ...prev, imagePlaceholder: compressedDataUrl }) : null);
-      } catch (err) {
-        console.error("Leadership image processing failed:", err);
-      } finally {
-        e.target.value = '';
-      }
-    }
-  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editing && editing.name && editing.role && editing.type) {
-      saveOfficial({
-        id: editing.id || `off-${Date.now()}`,
-        name: editing.name,
-        role: editing.role,
-        type: editing.type as any,
-        departmentId: editing.departmentId || undefined,
-        imagePlaceholder: editing.imagePlaceholder || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80',
-        profile: editing.profile || ''
-      });
-      setEditing(null);
-    }
+    saveHeroContent(formData);
   };
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div className="space-y-6">
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-bold text-gray-900">Homepage Hero Slideshow</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Customize welcoming headline, tagline, and background image slides.</p>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200 text-xs">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">County Leadership (CECMs & CCOs)</h2>
-          <p className="text-sm text-gray-500">Manage names, roles, departments, profiles, and images for executive members.</p>
+          <label className="block font-bold text-gray-700 mb-1">Welcome Tagline</label>
+          <input value={formData.welcomeTag} onChange={e => setFormData({...formData, welcomeTag: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
         </div>
-        <button
-          onClick={() => setEditing({ type: 'CECM', imagePlaceholder: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80' })}
-          className="flex items-center px-4 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add New Official
-        </button>
-      </div>
 
-      {/* Filter Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-100 pb-4">
-        {['All', 'CECM', 'CCO', 'Governor', 'Deputy Governor'].map(type => (
-          <button
-            key={type}
-            onClick={() => setFilterType(type)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-              filterType === type ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {type === 'All' ? 'All Leadership' : type}
+        <div>
+          <label className="block font-bold text-gray-700 mb-1">Main Hero Headline</label>
+          <input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
+        </div>
+
+        <div>
+          <label className="block font-bold text-gray-700 mb-1">Subtitle</label>
+          <textarea rows={2} value={formData.subtitle} onChange={e => setFormData({...formData, subtitle: e.target.value})} className="w-full border rounded-xl p-2.5 bg-white outline-none" />
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button type="submit" className="px-5 py-2 bg-green-700 text-white font-bold rounded-xl shadow-xs">
+            Save Slideshow Settings
           </button>
-        ))}
-      </div>
-
-      {/* Form Modal/Box */}
-      {editing !== null && (
-        <form onSubmit={handleSave} className="mb-8 bg-gray-50 p-6 rounded-2xl border border-gray-200 space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="font-bold text-gray-900 text-base">{editing.id ? 'Edit Official' : 'Add New Official'}</h3>
-            <button type="button" onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Official Name</label>
-              <input
-                required
-                type="text"
-                value={editing.name || ''}
-                onChange={e => setEditing({ ...editing, name: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="e.g. Hon. John Doe"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Leadership Type</label>
-              <select
-                value={editing.type || 'CECM'}
-                onChange={e => setEditing({ ...editing, type: e.target.value as any })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-              >
-                <option value="CECM">CECM (Executive Committee Member)</option>
-                <option value="CCO">CCO (Chief Officer)</option>
-                <option value="Governor">Governor</option>
-                <option value="Deputy Governor">Deputy Governor</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Role / Position Title</label>
-              <input
-                required
-                type="text"
-                value={editing.role || ''}
-                onChange={e => setEditing({ ...editing, role: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                placeholder="e.g. CECM - Health Services"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Assigned Department</label>
-              <select
-                value={editing.departmentId || ''}
-                onChange={e => setEditing({ ...editing, departmentId: e.target.value || undefined })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-              >
-                <option value="">-- None / Executive --</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Profile Biography / Statement</label>
-            <textarea
-              rows={3}
-              value={editing.profile || ''}
-              onChange={e => setEditing({ ...editing, profile: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-              placeholder="Brief biography or statement regarding their portfolio..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Official Photo</label>
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              {editing.imagePlaceholder && (
-                <img
-                  src={editing.imagePlaceholder}
-                  alt="Preview"
-                  className="w-16 h-16 rounded-full object-cover border-2 border-green-600 shadow-sm shrink-0"
-                />
-              )}
-              <div className="flex-1 space-y-2 w-full">
-                <input
-                  type="text"
-                  value={editing.imagePlaceholder || ''}
-                  onChange={e => setEditing({ ...editing, imagePlaceholder: e.target.value })}
-                  placeholder="Paste Image URL (https://...)"
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white outline-none"
-                />
-                <label className="inline-flex items-center px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg text-xs font-semibold cursor-pointer">
-                  <Upload className="w-3.5 h-3.5 mr-1.5" /> Upload Photo File
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => setEditing(null)}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-xs font-bold"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold"
-            >
-              Save Official
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Officials Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredOfficials.map(official => (
-          <div key={official.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex items-start space-x-4 shadow-sm hover:shadow-md transition-shadow">
-            <img
-              src={official.imagePlaceholder}
-              alt={official.name}
-              className="w-16 h-16 rounded-full object-cover shrink-0 border-2 border-gray-100"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-800 uppercase tracking-wider">
-                  {official.type}
-                </span>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setEditing(official)}
-                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                    title="Edit"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => { if (safeConfirm(`Remove ${official.name}?`)) deleteOfficial(official.id); }}
-                    className="p-1 text-red-600 hover:bg-red-50 rounded"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <h3 className="font-bold text-gray-900 text-sm mt-1 truncate">{official.name}</h3>
-              <p className="text-xs text-green-700 font-medium truncate">{official.role}</p>
-              {official.profile && (
-                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{official.profile}</p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+        </div>
+      </form>
     </div>
   );
 }
 
 function CountyLogoManager() {
   const { countyBranding, saveCountyBranding } = useData();
-  const [formData, setFormData] = useState<CountyBranding>({
-    logoUrl: countyBranding?.logoUrl || '',
-    countyName: countyBranding?.countyName || 'Taita Taveta',
-    countyTagline: countyBranding?.countyTagline || 'County Government',
-    motto: countyBranding?.motto || 'Datoni ya Rika'
-  });
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      try {
-        const compressedDataUrl = await compressAndReadImage(file, 600, 600, 0.8);
-        setFormData(prev => ({ ...prev, logoUrl: compressedDataUrl }));
-      } catch (err) {
-        console.error("Logo image processing failed:", err);
-      } finally {
-        e.target.value = '';
-      }
-    }
-  };
+  const [editingBranding, setEditingBranding] = useState<CountyBranding>(countyBranding);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveCountyBranding(formData);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    saveCountyBranding(editingBranding);
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Website County Logo & Branding</h2>
-          <p className="text-sm text-gray-500">Upload official county logo/coat of arms and edit header identity.</p>
-        </div>
-        {saveSuccess && (
-          <div className="flex items-center text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 text-sm font-medium">
-            <CheckCircle2 className="w-4 h-4 mr-1.5" /> Saved successfully!
-          </div>
-        )}
+    <div className="space-y-6">
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-bold text-gray-900">County Coat of Arms & Branding</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Update official county seal, portal title, and motto.</p>
       </div>
 
-      {/* Live Preview Card */}
-      <div className="mb-8 bg-gray-900 p-6 rounded-2xl text-white">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-3">Live Header Branding Preview</span>
-        <div className="bg-white rounded-xl p-4 flex items-center space-x-3 max-w-sm text-gray-900">
-          {formData.logoUrl ? (
-            <img src={formData.logoUrl} alt="County Logo" className="w-12 h-12 object-contain rounded p-0.5 border border-gray-200 bg-white" />
-          ) : (
-            <div className="w-12 h-12 bg-green-700 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-md border-2 border-yellow-500">
-              TT
-            </div>
-          )}
-          <div>
-            <h1 className="font-bold text-xl leading-tight">{formData.countyName || 'Taita Taveta'}</h1>
-            <p className="text-xs text-green-700 font-semibold tracking-wider uppercase">{formData.countyTagline || 'County Government'}</p>
-          </div>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6 bg-gray-50 p-6 rounded-2xl border border-gray-200">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-200 text-xs">
         <div>
-          <label className="block text-xs font-bold text-gray-700 mb-2">Website County Logo Image</label>
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-white shrink-0 overflow-hidden">
-              {formData.logoUrl ? (
-                <img src={formData.logoUrl} alt="Logo preview" className="w-full h-full object-contain p-1" />
-              ) : (
-                <span className="text-xs text-gray-400 text-center px-1">Default Seal</span>
-              )}
-            </div>
-
-            <div className="flex-1 space-y-3 w-full">
-              <input
-                type="text"
-                value={formData.logoUrl || ''}
-                onChange={e => setFormData({ ...formData, logoUrl: e.target.value })}
-                placeholder="Enter Logo Image URL (https://...)"
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-              />
-              <div className="flex gap-2">
-                <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold transition-colors">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Logo File
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                </label>
-
-                {formData.logoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, logoUrl: '' })}
-                    className="px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl border border-red-200"
-                  >
-                    Reset to Default Seal
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">County Name</label>
-            <input
-              type="text"
-              required
-              value={formData.countyName}
-              onChange={e => setFormData({ ...formData, countyName: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">County Subtitle / Tagline</label>
-            <input
-              type="text"
-              required
-              value={formData.countyTagline}
-              onChange={e => setFormData({ ...formData, countyTagline: e.target.value })}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-            />
-          </div>
+          <label className="block font-bold text-gray-700 mb-1">Official County Title</label>
+          <input value={editingBranding.countyTitle} onChange={e => setEditingBranding({...editingBranding, countyTitle: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none font-bold" />
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-gray-700 mb-1">County Motto</label>
-          <input
-            type="text"
-            value={formData.motto || ''}
-            onChange={e => setFormData({ ...formData, motto: e.target.value })}
-            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-            placeholder="e.g. Datoni ya Rika"
-          />
+          <label className="block font-bold text-gray-700 mb-1">County Motto</label>
+          <input value={editingBranding.countySubtitle} onChange={e => setEditingBranding({...editingBranding, countySubtitle: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
         </div>
 
-        <button
-          type="submit"
-          className="px-6 py-3 bg-green-700 hover:bg-green-800 text-white font-bold text-sm rounded-xl shadow-md transition-all"
-        >
-          Save Website Logo & Branding
-        </button>
+        <div className="flex justify-end pt-2">
+          <button type="submit" className="px-5 py-2 bg-green-700 text-white font-bold rounded-xl shadow-xs">
+            Save Branding Configuration
+          </button>
+        </div>
       </form>
     </div>
   );
 }
 
-function TourismManager() {
-  const { touristSites, saveTouristSite, deleteTouristSite } = useData();
-  const [editingSite, setEditingSite] = useState<TouristSite | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [isProcessingImage, setIsProcessingImage] = useState(false);
+function GovernorMessageManager() {
+  const { governorMessage, saveGovernorMessage } = useData();
+  const [editing, setEditing] = useState<GovernorMessage>(governorMessage);
+  const [showUrlInput, setShowUrlInput] = useState<boolean>(false);
+  const [photoUrlTemp, setPhotoUrlTemp] = useState<string>('');
 
-  const handleStartAdd = () => {
-    setEditingSite({
-      id: `site_${Date.now()}`,
-      name: '',
-      location: '',
-      imageUrl: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=800&q=80',
-      description: ''
-    });
-    setIsCreating(true);
-    setSaveSuccess(false);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveGovernorMessage(editing);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !editingSite) return;
-
-    setIsProcessingImage(true);
-    try {
-      const dataUrl = await compressAndReadImage(file, 1200, 800, 0.75);
-      setEditingSite(prev => prev ? ({ ...prev, imageUrl: dataUrl }) : null);
-    } catch (err) {
-      console.error("Tourism image upload error:", err);
-    } finally {
-      setIsProcessingImage(false);
-      e.target.value = '';
+    if (file) {
+      compressAndReadImage(file).then(dataUrl => setEditing({ ...editing, imageUrl: dataUrl }));
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSite) return;
-    saveTouristSite(editingSite);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
-    setEditingSite(null);
-    setIsCreating(false);
-  };
-
-  return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center">
-            <Compass className="w-5 h-5 mr-2 text-green-700" />
-            Tourism Sites & Attractions Manager
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">Add, edit, or delete tourist destinations, parks, and attractions in the county.</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleStartAdd}
-          className="inline-flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          Add Tourist Site
-        </button>
-      </div>
-
-      {saveSuccess && (
-        <div className="mb-6 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-xs font-bold flex items-center">
-          <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
-          Tourist site successfully saved and updated!
-        </div>
-      )}
-
-      {editingSite && (
-        <div className="mb-8 p-6 bg-gray-50 border border-gray-200 rounded-2xl shadow-sm space-y-4">
-          <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-            <h3 className="font-bold text-sm text-gray-900">
-              {isCreating ? 'Add New Tourist Destination' : `Edit: ${editingSite.name}`}
-            </h3>
-            <button
-              type="button"
-              onClick={() => setEditingSite(null)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Site / Destination Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Tsavo East & West National Parks"
-                  value={editingSite.name}
-                  onChange={e => setEditingSite({ ...editingSite, name: e.target.value })}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Sub-County / Location *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Voi / Taveta Sub-Counties"
-                  value={editingSite.location}
-                  onChange={e => setEditingSite({ ...editingSite, location: e.target.value })}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Destination Image</label>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-28 h-20 rounded-xl bg-gray-200 overflow-hidden border border-gray-300 shrink-0">
-                  {editingSite.imageUrl ? (
-                    <img src={editingSite.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400">
-                      <Image className="w-6 h-6" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <input
-                    type="text"
-                    placeholder="Enter image URL or upload image file below"
-                    value={editingSite.imageUrl}
-                    onChange={e => setEditingSite({ ...editingSite, imageUrl: e.target.value })}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-green-500 outline-none"
-                  />
-                  <div>
-                    <label className="inline-flex items-center px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer border border-gray-300 shadow-sm transition-colors">
-                      <Upload className={`w-3.5 h-3.5 mr-1.5 ${isProcessingImage ? 'animate-spin' : ''}`} />
-                      {isProcessingImage ? 'Compressing...' : 'Upload Image File'}
-                      <input type="file" accept="image/*" onChange={handleImageUpload} disabled={isProcessingImage} className="hidden" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Description & Key Highlights *</label>
-              <textarea
-                required
-                rows={4}
-                placeholder="Describe the wildlife, scenic landscapes, or cultural experience..."
-                value={editingSite.description}
-                onChange={e => setEditingSite({ ...editingSite, description: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl p-3 text-sm bg-white focus:ring-2 focus:ring-green-500 outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditingSite(null)}
-                className="px-4 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold rounded-xl text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-green-700 hover:bg-green-800 text-white font-bold rounded-xl text-xs shadow-sm"
-              >
-                Save Tourist Site
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {touristSites.map((site) => (
-          <div key={site.id} className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col justify-between p-4">
-            <div className="flex items-start space-x-4">
-              <img
-                src={site.imageUrl || 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=400&q=80'}
-                alt={site.name}
-                className="w-24 h-24 rounded-xl object-cover shrink-0 border border-gray-100 bg-gray-100"
-              />
-              <div className="flex-1 min-w-0">
-                <span className="inline-block px-2 py-0.5 bg-green-50 text-green-800 font-bold text-[10px] uppercase rounded-md mb-1">
-                  {site.location}
-                </span>
-                <h3 className="font-bold text-sm text-gray-900 truncate">{site.name}</h3>
-                <p className="text-xs text-gray-500 line-clamp-2 mt-1">{site.description}</p>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end space-x-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingSite(site);
-                  setIsCreating(false);
-                }}
-                className="inline-flex items-center px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors"
-              >
-                <Edit2 className="w-3.5 h-3.5 mr-1" />
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (safeConfirm(`Are you sure you want to delete "${site.name}"?`)) {
-                    deleteTouristSite(site.id);
-                  }
-                }}
-                className="inline-flex items-center px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {touristSites.length === 0 && (
-          <div className="col-span-full py-12 text-center text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-            <Compass className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-            <p className="text-xs font-semibold text-gray-600">No tourist sites added yet.</p>
-            <p className="text-[11px] text-gray-400 mt-1">Click "Add Tourist Site" above to publish a destination.</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function VacanciesManager() {
-  const { vacancies, departments, saveVacancy, deleteVacancy } = useData();
-  const [editingVacancy, setEditingVacancy] = useState<Vacancy | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Form states
-  const [title, setTitle] = useState('');
-  const [referenceNo, setReferenceNo] = useState('');
-  const [primaryDeptId, setPrimaryDeptId] = useState('');
-  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
-  const [jobType, setJobType] = useState<'Full-time' | 'Contract' | 'Internship' | 'Part-time' | 'Temporary'>('Full-time');
-  const [deadline, setDeadline] = useState('');
-  const [positionsCount, setPositionsCount] = useState(1);
-  const [description, setDescription] = useState('');
-  const [requirementsText, setRequirementsText] = useState('');
-  const [fileData, setFileData] = useState<string>('');
-  const [fileSize, setFileSize] = useState<string>('');
-  const [fileName, setFileName] = useState<string>('');
-
-  const getDeptName = (id: string) => departments.find(d => d.id === id)?.name || 'General Administration';
-
-  const handleStartCreate = () => {
-    setTitle('');
-    setReferenceNo(`TTC/CPSB/2026/0${vacancies.length + 1}`);
-    setPrimaryDeptId(departments[0]?.id || 'dept-1');
-    setSelectedDeptIds(departments[0] ? [departments[0].id] : []);
-    setJobType('Full-time');
-    setDeadline('2026-08-30T17:00');
-    setPositionsCount(1);
-    setDescription('');
-    setRequirementsText('Must be a Kenyan Citizen holding a valid National ID Card.\nBachelor degree or Diploma from a recognized institution.\nSatisfy Chapter Six of the Constitution of Kenya 2010.');
-    setFileData('');
-    setFileSize('');
-    setFileName('');
-    setEditingVacancy(null);
-    setIsCreating(true);
-  };
-
-  const handleStartEdit = (vac: Vacancy) => {
-    setTitle(vac.title);
-    setReferenceNo(vac.referenceNo || '');
-    setPrimaryDeptId(vac.departmentId);
-    setSelectedDeptIds(vac.departmentIds || [vac.departmentId]);
-    setJobType(vac.type);
-    setDeadline(vac.deadline ? vac.deadline.replace(' ', 'T').substring(0, 16) : '');
-    setPositionsCount(vac.positionsCount || 1);
-    setDescription(vac.description || '');
-    setRequirementsText((vac.requirements || []).join('\n'));
-    setFileData(vac.fileData || '');
-    setFileSize(vac.fileSize || '');
-    setFileName(vac.fileData ? 'Uploaded_Document.pdf' : '');
-    setEditingVacancy(vac);
-    setIsCreating(false);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const readableSize = file.size > 1024 * 1024 
-      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` 
-      : `${Math.round(file.size / 1024)} KB`;
-    
-    setFileSize(readableSize);
-    setFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setFileData(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !primaryDeptId) return;
-
-    const reqList = requirementsText
-      .split('\n')
-      .map(s => s.trim())
-      .filter(Boolean);
-
-    const vacancyObj: Vacancy = {
-      id: editingVacancy ? editingVacancy.id : `vac-${Date.now()}`,
-      title,
-      referenceNo,
-      departmentId: primaryDeptId,
-      departmentIds: selectedDeptIds.length > 0 ? selectedDeptIds : [primaryDeptId],
-      type: jobType,
-      deadline,
-      positionsCount,
-      description,
-      requirements: reqList,
-      fileData: fileData || undefined,
-      fileSize: fileSize || '1.2 MB',
-      viewsCount: editingVacancy ? editingVacancy.viewsCount || 0 : 0,
-      downloadsCount: editingVacancy ? editingVacancy.downloadsCount || 0 : 0,
-      datePosted: editingVacancy ? editingVacancy.datePosted : new Date().toISOString().split('T')[0]
-    };
-
-    saveVacancy(vacancyObj);
-    setIsCreating(false);
-    setEditingVacancy(null);
+  const handleAddPhotoUrl = () => {
+    if (photoUrlTemp.trim()) {
+      setEditing({ ...editing, imageUrl: photoUrlTemp.trim() });
+      setPhotoUrlTemp('');
+      setShowUrlInput(false);
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center">
-            <Briefcase className="w-5 h-5 mr-2 text-green-700" />
-            Careers & Vacancies Management
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Upload public job vacancies, configure real-time application countdown deadlines, assign featured departments, and manage attachments.
-          </p>
-        </div>
-
-        {!isCreating && !editingVacancy && (
-          <button
-            onClick={handleStartCreate}
-            className="inline-flex items-center px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            Post New Vacancy
-          </button>
-        )}
+      <div className="border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-bold text-gray-900">Message from H.E. The Governor</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Update the executive address, official title, and governor photograph.</p>
       </div>
 
-      {/* Form Section */}
-      {(isCreating || editingVacancy) && (
-        <div className="bg-gray-50/80 rounded-2xl p-5 border border-gray-200 space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-200 pb-3">
-            <h3 className="font-bold text-sm text-gray-900">
-              {isCreating ? 'Create Job Vacancy Announcement' : `Edit Vacancy: ${editingVacancy?.title}`}
-            </h3>
-            <button
-              onClick={() => { setIsCreating(false); setEditingVacancy(null); }}
-              className="p-1 hover:bg-gray-200 rounded-lg text-gray-500"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      <form onSubmit={handleSubmit} className="space-y-5 bg-gray-50 p-5 sm:p-6 rounded-2xl border border-gray-200 text-xs">
+        {/* Governor Photograph Section */}
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-3">
+          <label className="block font-bold text-gray-800 text-xs flex items-center">
+            <Camera className="w-4 h-4 mr-1.5 text-emerald-700" />
+            Governor Official Portrait Picture
+          </label>
+
+          <div className="flex flex-col sm:flex-row items-center gap-5">
+            <div className="relative shrink-0">
+              {editing.imageUrl ? (
+                <img
+                  src={editing.imageUrl}
+                  alt={editing.name}
+                  className="w-28 h-36 object-cover rounded-2xl shadow-md border-2 border-emerald-600/30"
+                />
+              ) : (
+                <div className="w-28 h-36 bg-gray-100 rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 p-2 text-center">
+                  <UserCheck className="w-8 h-8 mb-1" />
+                  <span className="text-[10px] font-bold">No Photo</span>
+                </div>
+              )}
+
+              {editing.imageUrl && (
+                <button
+                  type="button"
+                  onClick={() => setEditing({ ...editing, imageUrl: '' })}
+                  className="absolute -top-2 -right-2 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-sm"
+                  title="Remove Photo"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 space-y-3 w-full">
+              <p className="text-gray-500 leading-relaxed text-[11px]">
+                Upload an official high-resolution photograph of His Excellency The Governor. Recommended size: 600x800px or higher.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-2xs">
+                  <Upload className="w-3.5 h-3.5 mr-1.5" />
+                  Upload Photo File
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowUrlInput(!showUrlInput)}
+                  className="inline-flex items-center px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors border border-gray-200"
+                >
+                  <LinkIcon className="w-3.5 h-3.5 mr-1.5" />
+                  {showUrlInput ? 'Hide URL Input' : 'Add Image URL'}
+                </button>
+              </div>
+
+              {showUrlInput && (
+                <div className="flex items-center space-x-2 pt-1">
+                  <input
+                    type="url"
+                    placeholder="https://images.unsplash.com/..."
+                    value={photoUrlTemp}
+                    onChange={e => setPhotoUrlTemp(e.target.value)}
+                    className="flex-1 bg-white border border-gray-300 rounded-xl px-3 py-1.5 text-xs outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddPhotoUrl}
+                    className="px-3.5 py-1.5 bg-emerald-700 text-white rounded-xl font-bold"
+                  >
+                    Set URL
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Governor Full Name *</label>
+            <input required value={editing.name} onChange={e => setEditing({...editing, name: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none font-bold text-gray-900" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Job Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  placeholder="e.g. Senior Medical Officer / Civil Engineer"
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Reference Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={referenceNo}
-                  onChange={e => setReferenceNo(e.target.value)}
-                  placeholder="e.g. TTC/CPSB/2026/05"
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Primary Department *</label>
-                <select
-                  value={primaryDeptId}
-                  onChange={e => {
-                    setPrimaryDeptId(e.target.value);
-                    if (!selectedDeptIds.includes(e.target.value)) {
-                      setSelectedDeptIds([...selectedDeptIds, e.target.value]);
-                    }
-                  }}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-xs font-semibold focus:ring-2 focus:ring-green-500 outline-none"
-                >
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Employment Terms *</label>
-                <select
-                  value={jobType}
-                  onChange={e => setJobType(e.target.value as any)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-xs font-semibold focus:ring-2 focus:ring-green-500 outline-none"
-                >
-                  <option value="Full-time">Full-time (Permanent)</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Internship">Internship</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="Temporary">Temporary</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Number of Openings</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={positionsCount}
-                  onChange={e => setPositionsCount(parseInt(e.target.value) || 1)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Featured Departments Selection */}
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">Featured Departments (Select all applicable)</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white p-3 rounded-xl border border-gray-200 max-h-36 overflow-y-auto">
-                {departments.map(d => {
-                  const checked = selectedDeptIds.includes(d.id);
-                  return (
-                    <label key={d.id} className="flex items-center space-x-2 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={e => {
-                          if (e.target.checked) {
-                            setSelectedDeptIds([...selectedDeptIds, d.id]);
-                          } else {
-                            if (selectedDeptIds.length > 1) {
-                              setSelectedDeptIds(selectedDeptIds.filter(id => id !== d.id));
-                            }
-                          }
-                        }}
-                        className="rounded text-green-600 focus:ring-green-500"
-                      />
-                      <span>{d.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Application Deadline Countdown Selector */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Application Deadline (Date & Time) *</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={deadline}
-                  onChange={e => setDeadline(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none font-mono"
-                />
-                <p className="text-[10px] text-gray-500 mt-1">
-                  This date and time will power the real-time live application countdown timer on the careers portal.
-                </p>
-              </div>
-
-              {/* Upload PDF Document */}
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">Official Vacancy PDF Attachment</label>
-                <div className="flex items-center space-x-3 bg-white p-2.5 rounded-xl border border-gray-300">
-                  <label className="inline-flex items-center px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-800 rounded-lg text-xs font-bold cursor-pointer transition-colors shrink-0">
-                    <Upload className="w-3.5 h-3.5 mr-1" />
-                    Upload PDF File
-                    <input type="file" accept="application/pdf,.doc,.docx" onChange={handleFileUpload} className="hidden" />
-                  </label>
-                  <div className="min-w-0 flex-1 text-xs text-gray-600">
-                    {fileName ? (
-                      <span className="font-semibold truncate block text-green-800">{fileName} ({fileSize})</span>
-                    ) : (
-                      <span className="text-gray-400">Optional (Auto-generates official PDF if blank)</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">Position Summary & Duties</label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="Overview of the vacancy, scope of work, and key responsibilities..."
-                className="w-full border border-gray-300 rounded-xl p-3 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">Key Requirements & Qualifications (1 per line)</label>
-              <textarea
-                rows={4}
-                value={requirementsText}
-                onChange={e => setRequirementsText(e.target.value)}
-                placeholder="Must be a Kenyan Citizen holding a valid National ID...\nBachelor degree in relevant field...\nMinimum 5 years experience..."
-                className="w-full border border-gray-300 rounded-xl p-3 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none font-sans"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-3 border-t border-gray-200">
-              <button
-                type="button"
-                onClick={() => { setIsCreating(false); setEditingVacancy(null); }}
-                className="px-4 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold rounded-xl text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-green-700 hover:bg-green-800 text-white font-bold rounded-xl text-xs shadow-sm"
-              >
-                Save & Publish Vacancy
-              </button>
-            </div>
-          </form>
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Title Designation *</label>
+            <input required value={editing.title} onChange={e => setEditing({...editing, title: e.target.value})} className="w-full border rounded-xl px-3 py-2 bg-white outline-none" />
+          </div>
         </div>
-      )}
 
-      {/* Vacancies List Table */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                <th className="py-3 px-4">Ref No & Position</th>
-                <th className="py-3 px-4">Featured Department(s)</th>
-                <th className="py-3 px-4">Terms</th>
-                <th className="py-3 px-4">Deadline</th>
-                <th className="py-3 px-4 text-center">Views</th>
-                <th className="py-3 px-4 text-center">Downloads</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 text-xs">
-              {vacancies.map(vac => {
-                const featuredDeptIds = vac.departmentIds && vac.departmentIds.length > 0 ? vac.departmentIds : [vac.departmentId];
-                const isExpired = new Date(vac.deadline).getTime() < new Date().getTime();
-
-                return (
-                  <tr key={vac.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-[10px] text-orange-700 font-bold block">{vac.referenceNo || 'TTC/CPSB/2026/00'}</span>
-                      <strong className="text-gray-900 font-bold block text-sm">{vac.title}</strong>
-                      <span className="text-[11px] text-gray-400">{vac.positionsCount || 1} position(s)</span>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1">
-                        {featuredDeptIds.map(dId => (
-                          <span key={dId} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-medium border border-gray-200">
-                            {getDeptName(dId)}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <span className="px-2.5 py-1 bg-green-50 text-green-800 rounded font-bold text-[10px] uppercase border border-green-200">
-                        {vac.type}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <span className={`font-mono text-[11px] font-bold block ${isExpired ? 'text-red-600' : 'text-gray-900'}`}>
-                        {new Date(vac.deadline).toLocaleDateString()}
-                      </span>
-                      <span className="text-[10px] text-gray-400 block">
-                        {isExpired ? 'Deadline Passed' : 'Active Ticker'}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <span className="inline-flex items-center font-bold text-blue-700">
-                        <Eye className="w-3 h-3 mr-1" />
-                        {vac.viewsCount || 0}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <span className="inline-flex items-center font-bold text-orange-700">
-                        <Download className="w-3 h-3 mr-1" />
-                        {vac.downloadsCount || 0}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(vac)}
-                          className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (safeConfirm(`Are you sure you want to delete "${vac.title}"?`)) {
-                              deleteVacancy(vac.id);
-                            }
-                          }}
-                          className="px-2.5 py-1 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {vacancies.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-gray-400">
-                    No vacancies posted yet. Click "Post New Vacancy" above to add job openings.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div>
+          <label className="block font-bold text-gray-700 mb-1">Welcome Address Message *</label>
+          <textarea required rows={6} value={editing.message} onChange={e => setEditing({...editing, message: e.target.value})} className="w-full border rounded-xl p-3 bg-white outline-none leading-relaxed" />
         </div>
-      </div>
+
+        <div className="flex justify-end pt-2">
+          <button type="submit" className="px-5 py-2.5 bg-green-700 hover:bg-green-800 text-white font-bold rounded-xl shadow-xs transition-colors">
+            Save Governor Statement
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
-

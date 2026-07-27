@@ -1,14 +1,21 @@
+import React, { useState } from 'react';
 import { Calendar, MapPin, ArrowRight, Image as ImageIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { FacebookFeed } from '../components/FacebookFeed';
+import { ImageLightboxModal } from '../components/ImageLightboxModal';
 
 export function News() {
   const { newsItems, eventItems, departments } = useData();
+  const [lightboxData, setLightboxData] = useState<{ images: string[]; index: number; title?: string } | null>(null);
 
   const getDeptName = (id?: string) => {
     if (!id) return 'General County News';
     return departments.find(d => d.id === id)?.name || 'General';
+  };
+
+  const openLightbox = (images: string[], index: number, title?: string) => {
+    setLightboxData({ images, index, title });
   };
 
   return (
@@ -30,8 +37,14 @@ export function News() {
               {newsItems.map((news) => (
                 <div key={news.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                   {news.mainImage && (
-                    <div className="w-full h-64 overflow-hidden">
-                      <img src={news.mainImage} alt={news.title} className="w-full h-full object-cover" />
+                    <div 
+                      onClick={() => openLightbox([news.mainImage!, ...(news.gallery || [])], 0, news.title)}
+                      className="w-full h-64 overflow-hidden cursor-pointer group relative"
+                    >
+                      <img src={news.mainImage} alt={news.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs bg-black/30">
+                        Click to view full image
+                      </div>
                     </div>
                   )}
                   <div className="p-6 md:p-8">
@@ -53,11 +66,20 @@ export function News() {
                     {news.gallery && news.gallery.length > 0 && (
                       <div className="mb-6">
                         <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center">
-                          <ImageIcon className="w-4 h-4 mr-2 text-gray-500" /> Photo Gallery
+                          <ImageIcon className="w-4 h-4 mr-2 text-gray-500" /> Photo Gallery ({news.gallery.length})
                         </h4>
                         <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
                           {news.gallery.map((img, i) => (
-                            <img key={i} src={img} alt={`Gallery ${i + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200 shrink-0 shadow-sm" />
+                            <button
+                              key={i}
+                              onClick={() => openLightbox(news.gallery!, i, `${news.title} - Photo ${i + 1}`)}
+                              className="w-24 h-24 rounded-xl overflow-hidden border border-gray-200 shrink-0 shadow-2xs hover:opacity-90 hover:scale-105 transition-all group relative"
+                            >
+                              <img src={img} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                                Zoom
+                              </div>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -85,8 +107,11 @@ export function News() {
                   return (
                     <li key={event.id} className="hover:bg-gray-50 transition-colors">
                       {event.mainImage && (
-                        <div className="w-full h-32 overflow-hidden border-b border-gray-100">
-                          <img src={event.mainImage} alt={event.title} className="w-full h-full object-cover" />
+                        <div 
+                          onClick={() => openLightbox([event.mainImage!, ...(event.gallery || [])], 0, event.title)}
+                          className="w-full h-32 overflow-hidden border-b border-gray-100 cursor-pointer group relative"
+                        >
+                          <img src={event.mainImage} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                         </div>
                       )}
                       <div className="p-6">
@@ -112,7 +137,13 @@ export function News() {
                           <div className="mt-4">
                             <div className="flex gap-2 overflow-x-auto hide-scrollbar">
                               {event.gallery.map((img, i) => (
-                                <img key={i} src={img} alt={`Gallery ${i + 1}`} className="w-16 h-16 object-cover rounded-md border border-gray-200 shrink-0" />
+                                <button
+                                  key={i}
+                                  onClick={() => openLightbox(event.gallery!, i, `${event.title} - Photo ${i + 1}`)}
+                                  className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 shrink-0 hover:opacity-90 hover:scale-105 transition-all"
+                                >
+                                  <img src={img} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                                </button>
                               ))}
                             </div>
                           </div>
@@ -128,6 +159,15 @@ export function News() {
 
         </div>
       </div>
+
+      {lightboxData && (
+        <ImageLightboxModal
+          images={lightboxData.images}
+          initialIndex={lightboxData.index}
+          title={lightboxData.title}
+          onClose={() => setLightboxData(null)}
+        />
+      )}
     </div>
   );
 }
