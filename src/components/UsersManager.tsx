@@ -358,6 +358,30 @@ export function UsersManager() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
+                <label className="block font-bold text-gray-700 mb-1">Payroll Number</label>
+                <input
+                  type="text"
+                  value={payrollNumber}
+                  onChange={e => setPayrollNumber(e.target.value)}
+                  placeholder="e.g. TT-1002"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">Password</label>
+                <input
+                  type="text"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="e.g. health123"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-green-500 outline-none font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
                 <label className="block font-bold text-gray-700 mb-1">System Role *</label>
                 <select
                   value={role}

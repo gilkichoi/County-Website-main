@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer utilities {
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
@@ -8,6 +10,21 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+/* Dark Mode Global Styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #f8fafc;
+}
+
+/* Base body transition */
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Accessibility Modes */
@@ -20,8 +37,17 @@
   color: #000000;
 }
 
+.dark.high-contrast body {
+  background-color: #000000;
+  color: #ffffff;
+}
+
 .high-contrast * {
   border-color: #000 !important;
+}
+
+.dark.high-contrast * {
+  border-color: #fff !important;
 }
 
 .large-text {
